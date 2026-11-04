@@ -46,7 +46,7 @@ CRM для строительной компании: постановщик (р
 ├─ supabase/
 │  ├─ config.toml              # enable_signup = false
 │  ├─ migrations/              # *.sql, по порядку
-│  └─ seed.sql                 # пустой или только комментарий (данные — через scripts/seed.ts)
+│  └─ seed.sql                 # пустой или только комментарий (данные — через scripts/seed/seed.cli.ts)
 ├─ scripts/
 │  └─ seed.ts                  # создание юзеров, объектов, задач, прогон статусов через RPC
 ├─ tests/
@@ -115,7 +115,7 @@ CRM для строительной компании: постановщик (р
   `[auth.email] enable_signup = true` — этот ключ включает сам email-провайдер, без него не
   работает вход по паролю; в облаке —
   Authentication → Providers → Email → «Allow new users to sign up» выключено).
-- Пользователи создаются только через Admin API (`scripts/seed.ts`) или Dashboard.
+- Пользователи создаются только через Admin API (`scripts/seed/`) или Dashboard.
 - Роль берётся из `auth.users.raw_app_meta_data->>'role'` (app_metadata пользователь изменить не
   может, в отличие от user_metadata). Имя — из `raw_user_meta_data->>'full_name'`.
 - Если роль не указана или невалидна — `executor` (минимальные права). Повысить до `manager` можно
@@ -413,8 +413,11 @@ RPC выставляет флаг через `set_config('app.status_change', 'r
 
 ## 9. Seed и тестовые данные
 
-`scripts/seed.ts` (запуск `npm run seed`, через `tsx`). Читает из env (не `VITE_`!):
-`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SEED_PASSWORD` (общий пароль демо-юзеров).
+`scripts/seed/seed.cli.ts` (запуск `npm run seed -- --env-file <файл> [--reset] [--yes]`, через `tsx`;
+логика — `scripts/seed/seed.ts`, `runSeed`). Читает только из окружения или из файла, явно переданного
+через `--env-file` (корневой `.env` сам не читается): `SUPABASE_URL`, `SUPABASE_ANON_KEY` (вход под
+демо-пользователями), `SUPABASE_SERVICE_ROLE_KEY`, `SEED_PASSWORD` (общий пароль демо-юзеров).
+Не-локальный URL — только с `--yes`.
 Идемпотентен: если юзер с email существует — переиспользует; объекты/задачи пересоздаёт только
 с флагом `--reset` (удаляет объекты демо, задачи уходят каскадом).
 
@@ -507,7 +510,7 @@ Supabase), `npm run build`.
   `SUPABASE_URL=`, `SUPABASE_SERVICE_ROLE_KEY=`, `SEED_PASSWORD=` (только для скриптов, с
   комментарием «никогда не префиксовать VITE_, не коммитить»).
 - `.gitignore`: `.env`, `.env.*` кроме `.env.example`, `supabase/.temp`, `supabase/.branches`.
-- `scripts/seed.ts` падает с ошибкой, если найдёт service role key в переменной с префиксом
+- Seed-скрипт падает с ошибкой, если найдёт service role key в переменной с префиксом
   `VITE_`.
 - Облачный проект уже создан: project ref `fxvcwxsumzwewmzjzoua`,
   `https://fxvcwxsumzwewmzjzoua.supabase.co`, БД

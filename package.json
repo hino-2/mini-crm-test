@@ -12,6 +12,7 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "test:db": "vitest run --config vitest.db.config.ts",
+    "seed": "tsx scripts/seed/seed.cli.ts",
     "gen:types": "supabase gen types typescript --local > src/shared/api/database.types.ts"
   },
   "dependencies": {

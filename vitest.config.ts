@@ -8,5 +8,9 @@ export default defineConfig({
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     setupFiles: ['./src/test/setup.ts'],
     unstubEnvs: true,
+    env: {
+      VITE_SUPABASE_URL: 'http://127.0.0.1:1',
+      VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+    },
   },
 });

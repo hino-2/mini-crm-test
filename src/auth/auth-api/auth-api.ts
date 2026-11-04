@@ -35,5 +35,5 @@ export async function fetchProfile(userId: string): Promise<Profile> {
     throw error;
   }
 
-  return data as Profile;
+  return data;
 }

@@ -11,3 +11,11 @@ export type Task = {
   created_at: string;
   updated_at: string;
 };
+
+export type TaskListItem = Pick<Task, 'id' | 'title' | 'status' | 'created_at'> & {
+  assignee: { full_name: string };
+};
+
+export type TaskCreateInput = Pick<Task, 'object_id' | 'title' | 'description' | 'assignee_id'>;
+
+export type TaskFormValues = { title: string; description: string; assignee_id: string | null };

@@ -15,3 +15,5 @@ export const ERROR_MESSAGES: Readonly<Record<DbErrorCode, string>> = {
 export const UNKNOWN_ERROR_MESSAGE = 'Не удалось выполнить действие';
 
 export const INVALID_CREDENTIALS_MESSAGE = 'Неверный email или пароль';
+
+export const NOT_FOUND_OR_NO_ACCESS_TEXT = 'Не найдено или нет доступа';

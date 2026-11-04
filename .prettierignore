@@ -1,0 +1,7 @@
+dist
+coverage
+package-lock.json
+spec/
+supabase/.temp
+supabase/.branches
+src/shared/api/database.types.ts

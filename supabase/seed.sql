@@ -1,0 +1,1 @@
+-- Данные создаются скриптом scripts/seed.ts (npm run seed), не здесь.

@@ -46,8 +46,8 @@ describe('§3 / §4: supabase/config.toml disables sign-up', () => {
     expect(readSetting('auth', 'enable_signup')).toBe('false');
   });
 
-  it('§4: [auth.email] has enable_signup = false', () => {
-    expect(readSetting('auth.email', 'enable_signup')).toBe('false');
+  it('§4 / §8.3: [auth.email] has enable_signup = true (keeps the email provider enabled for password login; signup is still blocked globally by [auth])', () => {
+    expect(readSetting('auth.email', 'enable_signup')).toBe('true');
   });
 });
 

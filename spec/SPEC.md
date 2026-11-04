@@ -111,7 +111,9 @@ CRM для строительной компании: постановщик (р
 
 - Постановщиков и исполнителей может быть несколько. Все постановщики равноправны: любой
   постановщик может редактировать/удалять/принимать задачи любого другого постановщика.
-- Регистрация отключена (`supabase/config.toml`: `[auth] enable_signup = false`; в облаке —
+- Регистрация отключена (`supabase/config.toml`: `[auth] enable_signup = false`; при этом
+  `[auth.email] enable_signup = true` — этот ключ включает сам email-провайдер, без него не
+  работает вход по паролю; в облаке —
   Authentication → Providers → Email → «Allow new users to sign up» выключено).
 - Пользователи создаются только через Admin API (`scripts/seed.ts`) или Dashboard.
 - Роль берётся из `auth.users.raw_app_meta_data->>'role'` (app_metadata пользователь изменить не

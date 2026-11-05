@@ -1,6 +1,6 @@
-import { Badge, Button, Loader, Table, Text, Title } from '@mantine/core';
+import { Anchor, Badge, Button, Loader, Table, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { generatePath, useNavigate } from 'react-router';
+import { generatePath, Link } from 'react-router';
 import { ROUTE_PATHS } from '../../app/app.constants';
 import { useCurrentProfile } from '../../auth/auth-context/auth-context';
 import { useNotifyError } from '../../shared/errors/errors.hooks';
@@ -11,7 +11,6 @@ import type { ObjectTasksSectionProps } from './object-tasks-section.interfaces'
 
 export function ObjectTasksSection({ objectId }: ObjectTasksSectionProps): JSX.Element {
   const { role } = useCurrentProfile();
-  const navigate = useNavigate();
   const [opened, { open, close }] = useDisclosure(false);
   const { data, isPending, error } = useObjectTasks(objectId);
 
@@ -41,12 +40,12 @@ export function ObjectTasksSection({ objectId }: ObjectTasksSectionProps): JSX.E
           </Table.Thead>
           <Table.Tbody>
             {data.map((task) => (
-              <Table.Tr
-                key={task.id}
-                style={{ cursor: 'pointer' }}
-                onClick={() => navigate(generatePath(ROUTE_PATHS.task, { taskId: task.id }))}
-              >
-                <Table.Td>{task.title}</Table.Td>
+              <Table.Tr key={task.id}>
+                <Table.Td>
+                  <Anchor component={Link} to={generatePath(ROUTE_PATHS.task, { taskId: task.id })}>
+                    {task.title}
+                  </Anchor>
+                </Table.Td>
                 <Table.Td>{task.assignee.full_name}</Table.Td>
                 <Table.Td>
                   <Badge color={TASK_STATUS_COLORS[task.status]}>

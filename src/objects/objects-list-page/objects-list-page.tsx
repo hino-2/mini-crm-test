@@ -1,6 +1,6 @@
-import { Button, Loader, Table, Text, Title } from '@mantine/core';
+import { Anchor, Button, Loader, Table, Text, Title } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { generatePath, useNavigate } from 'react-router';
+import { generatePath, Link } from 'react-router';
 import { ROUTE_PATHS } from '../../app/app.constants';
 import { useCurrentProfile } from '../../auth/auth-context/auth-context';
 import { useNotifyError } from '../../shared/errors/errors.hooks';
@@ -10,7 +10,6 @@ import { useCreateObject, useObjects } from '../objects-queries/objects-queries'
 export function ObjectsListPage(): JSX.Element {
   const { role } = useCurrentProfile();
   const isManager = role === 'manager';
-  const navigate = useNavigate();
   const [opened, { open, close }] = useDisclosure(false);
   const { data, isPending, error } = useObjects();
   const create = useCreateObject();
@@ -40,12 +39,15 @@ export function ObjectsListPage(): JSX.Element {
           </Table.Thead>
           <Table.Tbody>
             {data.map((object) => (
-              <Table.Tr
-                key={object.id}
-                style={{ cursor: 'pointer' }}
-                onClick={() => navigate(generatePath(ROUTE_PATHS.object, { objectId: object.id }))}
-              >
-                <Table.Td>{object.name}</Table.Td>
+              <Table.Tr key={object.id}>
+                <Table.Td>
+                  <Anchor
+                    component={Link}
+                    to={generatePath(ROUTE_PATHS.object, { objectId: object.id })}
+                  >
+                    {object.name}
+                  </Anchor>
+                </Table.Td>
                 <Table.Td>{object.address}</Table.Td>
                 <Table.Td>{object.task_count}</Table.Td>
               </Table.Tr>

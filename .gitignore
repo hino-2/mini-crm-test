@@ -6,4 +6,4 @@ dist/
 supabase/.temp/
 supabase/.branches/
 
-.vercel/
+.netlify/

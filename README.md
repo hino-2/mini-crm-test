@@ -116,9 +116,11 @@ src/                   фронтенд; модули по доменам: auth,
    npm run seed -- --env-file .env.seed.cloud --yes
    ```
    Без `--yes` seed в не-локальную базу не пишет.
-3. **Фронтенд (Vercel).** Импортируйте репозиторий и задайте env `VITE_SUPABASE_URL` и
-   `VITE_SUPABASE_ANON_KEY`. `vercel.json` уже отправляет все пути на SPA. В Supabase →
-   Authentication → URL Configuration укажите домен Vercel в Site URL.
+3. **Фронтенд (Netlify).** Подключите репозиторий и задайте env `VITE_SUPABASE_URL` и
+   `VITE_SUPABASE_ANON_KEY` (Site configuration → Environment variables). Сборку, папку
+   публикации и отправку всех путей на SPA задаёт `netlify.toml`. Переменные `VITE_*`
+   вшиваются при сборке: после их изменения нужен новый деплой. В Supabase →
+   Authentication → URL Configuration укажите домен Netlify в Site URL.
 
 ## Проверка защиты в обход интерфейса
 

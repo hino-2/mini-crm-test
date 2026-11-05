@@ -33,7 +33,7 @@ CRM для строительной компании: постановщик (р
 | Тесты фронта | Vitest + @testing-library/react + jsdom |
 | Тесты БД | Vitest (отдельный конфиг) против локального Supabase через supabase-js |
 | Линт/формат | ESLint (flat config, typescript-eslint, react-hooks) + Prettier |
-| Деплой | Vercel (SPA) |
+| Деплой | Netlify (SPA) |
 
 Пакетный менеджер: npm. Один пакет, без монорепы.
 
@@ -58,7 +58,7 @@ CRM для строительной компании: постановщик (р
 │  └─ for-manager.md           # объяснение для руководителя (сдача, п.3)
 ├─ vitest.config.ts            # фронт (jsdom), include src/**
 ├─ vitest.db.config.ts         # БД (node), include tests/db/**
-├─ vercel.json                 # SPA rewrite на /index.html
+├─ netlify.toml                # сборка + SPA rewrite на /index.html
 ├─ .env.example
 └─ README.md
 ```
@@ -69,7 +69,7 @@ CRM для строительной компании: постановщик (р
 `supabase gen types typescript --local > src/shared/api/database.types.ts`).
 
 **Frontend lane**: всё остальное в `src/**`, `index.html`, `vite.config.ts`, `vitest.config.ts`,
-`vercel.json`.
+`netlify.toml`.
 
 **Общие корневые файлы** (`package.json`, `tsconfig*.json`, ESLint/Prettier конфиги, `.env.example`,
 `.gitignore`, `README.md`, `docs/**`): создаются на шаге 0 (scaffold) одним агентом
@@ -652,8 +652,9 @@ Supabase), `npm run build`.
 - Облако: `supabase link --project-ref fxvcwxsumzwewmzjzoua` → `supabase db push`; регистрация
   выключена в Dashboard; `npm run seed` с облачными env локально. До шага 7 агенты работают
   только с локальным Supabase (Docker); облачную БД не трогают.
-- Vercel: env `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; `vercel.json` с rewrite всех путей
-  на `/index.html`. В Supabase Auth → URL Configuration добавить домен Vercel в Site URL.
+- Netlify: env `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; `netlify.toml` (сборка `npm run build`,
+  публикация `dist`, rewrite всех путей на `/index.html`). В Supabase Auth → URL Configuration
+  добавить домен Netlify в Site URL.
 
 ---
 
@@ -700,12 +701,12 @@ Backend и frontend lane-ы параллельны везде, где не ук�
 
 | # | Шаг | Lane | Готово, когда |
 | --- | --- | --- | --- |
-| 0 | Scaffold: Vite+React+TS, Mantine, Query, Router, ESLint/Prettier (с padding-правилом), Vitest оба конфига, `supabase init`, `.env.example`, `.gitignore`, `vercel.json`, npm-скрипты | frontend (корень) + backend (`supabase init`, `vitest.db.config.ts`) — **последовательно**: сначала frontend scaffold, затем backend, т.к. общий `package.json` | `lint`, `typecheck`, `build` зелёные на пустом приложении |
+| 0 | Scaffold: Vite+React+TS, Mantine, Query, Router, ESLint/Prettier (с padding-правилом), Vitest оба конфига, `supabase init`, `.env.example`, `.gitignore`, `netlify.toml`, npm-скрипты | frontend (корень) + backend (`supabase init`, `vitest.db.config.ts`) — **последовательно**: сначала frontend scaffold, затем backend, т.к. общий `package.json` | `lint`, `typecheck`, `build` зелёные на пустом приложении |
 | 1 | Миграции: enum-ы, таблицы, хелперы, RLS, grants, триггеры, RPC; генерация `database.types.ts`; тесты БД (10.1) | backend | `test:db` зелёный |
 | 2 | Auth + layout + guard-ы + маршруты-заглушки + маппинг ошибок + `getAvailableActions` | frontend (параллельно с 1, по контракту раздела 5) | unit-тесты зелёные |
 | 3 | Seed-скрипт (9) | backend | `npm run seed` на чистой локальной БД создаёт данные; повторный запуск не падает |
 | 4 | Экраны объектов (8.3 п.2–3) | frontend | создание/редактирование/удаление работает против локальной БД |
 | 5 | Карточка задачи, действия, история, «Мои задачи» (8.3 п.4–5, 8.4) | frontend | весь цикл статусов проходится в UI обеими ролями |
 | 6 | README (запуск локально, тесты, деплой, демо-доступы), `docs/decisions.md`, `docs/for-manager.md` (полстраницы, без терминов: как устроено, как защищены данные, чего не может исполнитель) | docs, без ревьюера | — |
-| 7 | Деплой: облачный проект, `db push`, seed, Vercel; ручная проверка в обход UI (curl с токеном исполнителя) | вручную пользователем | приложение доступно по ссылке |
+| 7 | Деплой: облачный проект, `db push`, seed, Netlify; ручная проверка в обход UI (curl с токеном исполнителя) | вручную пользователем | приложение доступно по ссылке |
 | 8 | Мягкое удаление и корзина (миграции `soft_delete`, `task_field_history`; `/trash`), неизменяемый `object_id` задачи, редактирование принятых задач, история правок полей; обновление seed и документов | backend + frontend (параллельно по контракту 5.9–5.10) | `test:db` и `npm test` зелёные; корзина и смешанная история работают в UI |

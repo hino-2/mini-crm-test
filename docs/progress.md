@@ -8,6 +8,23 @@
 
 ---
 
+## 2026-11-05 — Деплой на Netlify
+
+**Сделано**
+- `netlify.toml`: сборка `npm run build`, публикация `dist`, Node 22, rewrite всех путей на
+  `/index.html`. `.gitignore`: `.netlify/`.
+- README (раздел «Деплой»), SPEC §2, §3, §11, §13 переведены на Netlify.
+- Облачный Supabase: миграции применены (`db push`), seed выполнен (4 пользователя, 3 объекта,
+  8 задач).
+
+**Гейты:** build — зелёный.
+
+**Открыто**
+- В Netlify задать `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`; в Supabase — Site URL и
+  выключить регистрацию.
+
+---
+
 ## 2026-11-05 — Порядок истории и кнопки «Назад» на карточках задачи и объекта
 
 **Сделано**
@@ -68,7 +85,7 @@ frontend-code-reviewer — APPROVED после исправлений (обно�
 
 **Сделано**
 - `README.md`: демо-доступы, локальный запуск (Supabase в Docker, `.env.local`,
-  `.env.seed.local`, seed), тесты и гейты, структура, деплой (db push, seed с `--yes`, Vercel),
+  `.env.seed.local`, seed), тесты и гейты, структура, деплой (db push, seed с `--yes`, Netlify),
   проверка защиты в обход UI через curl.
 - `docs/decisions.md`: 21 решение (права, статусы и история, объекты и задачи, интерфейс) и
   список несделанного — из спеки §12 и журнала.
@@ -287,7 +304,7 @@ API; повышение роли через `user_metadata` не работае�
   (`[auth]` и `[auth.email]` → `enable_signup = false`), пустая папка миграций, `seed.sql`-заглушка.
 - Хелпер тестов БД `tests/db/env/env.ts`: читает только `.env.test.local`, отказывается
   работать с не-локальным Supabase, быстро падает при недоступности локального инстанса.
-- `vercel.json` (SPA rewrite), `.env.example`, `.gitignore` (`.env*`, `.vercel/`).
+- SPA rewrite, `.env.example`, `.gitignore` (`.env*`).
 
 **Решения**
 - `dotenv` не используется: тесты БД читают env через `node:util` `parseEnv`, чтобы корневой

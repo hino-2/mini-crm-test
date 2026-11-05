@@ -479,6 +479,76 @@ describe('§5.4 / §12.5 task validation: title trim 1..200, description ≤ 500
   });
 });
 
+describe('§8.3 п.3 «Кнопка «← Назад» слева от заголовка «Карточка объекта» — переход на список объектов /objects; показывается всегда»', () => {
+  it.each([
+    ['manager', MANAGER],
+    ['executor', EXECUTOR],
+  ] as const)('%s: loaded card shows «← Назад» link with href /objects', async (_role, profile) => {
+    renderCard(profile);
+
+    await screen.findByText('Дом на Ленина');
+
+    expect(screen.getByRole('link', { name: /Назад/ })).toHaveAttribute('href', '/objects');
+  });
+
+  it('«← Назад» comes before the «Карточка объекта» heading in DOM order', async () => {
+    renderCard(MANAGER);
+
+    await screen.findByText('Дом на Ленина');
+
+    const link = screen.getByRole('link', { name: /Назад/ });
+    const heading = screen.getByRole('heading', { name: 'Карточка объекта' });
+
+    expect(link.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it.each([
+    ['manager', MANAGER],
+    ['executor', EXECUTOR],
+  ] as const)('%s: clicking «← Назад» navigates to the objects list', async (_role, profile) => {
+    const user = userEvent.setup();
+
+    renderCard(profile);
+
+    await screen.findByText('Дом на Ленина');
+    await user.click(screen.getByRole('link', { name: /Назад/ }));
+
+    expect(await screen.findByText(OBJECTS_LIST_PROBE)).toBeInTheDocument();
+  });
+
+  it('shown while the object is still loading', async () => {
+    vi.mocked(fetchObject).mockReturnValue(new Promise<ObjectSummary | null>(() => undefined));
+    renderCard(EXECUTOR);
+
+    expect(await screen.findByRole('link', { name: /Назад/ })).toHaveAttribute('href', '/objects');
+    expect(screen.queryByText('Дом на Ленина')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['manager', MANAGER],
+    ['executor', EXECUTOR],
+  ] as const)(
+    '%s: shown on «Не найдено или нет доступа» and leads to the objects list',
+    async (_role, profile) => {
+      vi.mocked(fetchObject).mockResolvedValue(null);
+
+      const user = userEvent.setup();
+
+      renderCard(profile);
+
+      await screen.findByText('Не найдено или нет доступа');
+
+      const link = screen.getByRole('link', { name: /Назад/ });
+
+      expect(link).toHaveAttribute('href', '/objects');
+
+      await user.click(link);
+
+      expect(await screen.findByText(OBJECTS_LIST_PROBE)).toBeInTheDocument();
+    },
+  );
+});
+
 describe('§5.8 «ASSIGNEE_NOT_EXECUTOR» on task creation', () => {
   it('createTask rejects ASSIGNEE_NOT_EXECUTOR → notification text from §5.8, dialog stays open', async () => {
     vi.mocked(createTask).mockRejectedValue(new Error('ASSIGNEE_NOT_EXECUTOR'));

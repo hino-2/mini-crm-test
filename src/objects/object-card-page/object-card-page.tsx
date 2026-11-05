@@ -6,6 +6,7 @@ import { ROUTE_PATHS } from '../../app/app.constants';
 import { useCurrentProfile } from '../../auth/auth-context/auth-context';
 import { NOT_FOUND_OR_NO_ACCESS_TEXT } from '../../shared/errors/errors.constants';
 import { useNotifyError } from '../../shared/errors/errors.hooks';
+import { PageHeader } from '../../shared/page-header/page-header';
 import { ObjectTasksSection } from '../../tasks/object-tasks-section/object-tasks-section';
 import { ObjectFormModal } from '../object-form-modal/object-form-modal';
 import { useDeleteObject, useObject, useUpdateObject } from '../objects-queries/objects-queries';
@@ -34,7 +35,7 @@ export function ObjectCardPage(): JSX.Element {
 
   return (
     <>
-      <Title order={2}>Карточка объекта</Title>
+      <PageHeader title="Карточка объекта" backTo={ROUTE_PATHS.objects} />
       {isPending && !error && <Loader />}
       {object === null && <Text>{NOT_FOUND_OR_NO_ACCESS_TEXT}</Text>}
       {object && (

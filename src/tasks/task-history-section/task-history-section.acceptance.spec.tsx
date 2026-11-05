@@ -126,15 +126,16 @@ const HISTORY: TaskHistoryEntry[] = [
   },
 ];
 
+// Индексы строк на экране: массив API в обратном порядке (новые сверху), строка i = HISTORY[len - 1 - i].
 const ROW = {
-  created: 0,
-  title: 1,
-  assignee: 2,
-  descriptionFilled: 3,
-  rework: 4,
-  deleted: 5,
-  restored: 6,
-  descriptionCleared: 7,
+  descriptionCleared: 0,
+  restored: 1,
+  deleted: 2,
+  rework: 3,
+  descriptionFilled: 4,
+  assignee: 5,
+  title: 6,
+  created: 7,
 } as const;
 
 // Тестовый хелпер: статичный фейк контекста авторизации.
@@ -222,14 +223,22 @@ describe('step 8 §4.4 History section: heading «История», headers «Д
     expect(screen.getByRole('columnheader', { name: 'Комментарий' })).toBeInTheDocument();
   });
 
-  it('«Rows in API order (no re-sort)»: one row per entry, last row is the earliest-dated entry', async () => {
+  it('«Rows in reversed API order (newest first, no re-sort by date)»: one row per entry, row i = HISTORY[len - 1 - i]', async () => {
     const rows = await renderHistory();
 
     expect(rows).toHaveLength(HISTORY.length);
+
+    HISTORY.forEach((entry, apiIndex) => {
+      const row = nth(rows, HISTORY.length - 1 - apiIndex);
+
+      expect(cell(row, 0)).toHaveTextContent(formatDate(entry.changed_at));
+    });
+
+    // Последний элемент API (самая ранняя дата) — первая строка: значит, пересортировки по дате нет.
     expect(
-      within(nth(rows, ROW.descriptionCleared)).getByText(formatDate('2026-03-01T09:00:00Z')),
+      within(nth(rows, 0)).getByText(formatDate('2026-03-01T09:00:00Z')),
     ).toBeInTheDocument();
-    expect(within(nth(rows, ROW.created)).getByText('Создана')).toBeInTheDocument();
+    expect(within(nth(rows, rows.length - 1)).getByText('Создана')).toBeInTheDocument();
   });
 });
 

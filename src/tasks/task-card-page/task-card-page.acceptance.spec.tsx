@@ -320,6 +320,59 @@ describe('§8.3 п.4 «Карточка задачи. Поля: название
   });
 });
 
+describe('§8.3 п.4 «← Назад» — ссылка-кнопка слева сверху над «Карточка задачи», ведёт на карточку объекта задачи', () => {
+  const BACK = /Назад/;
+
+  it.each([
+    ['manager', MANAGER],
+    ['executor', EXECUTOR],
+  ] as const)('%s sees «← Назад» above the heading, href = /objects/<task.object_id>', async (_role, profile) => {
+    await renderLoaded(profile, 'new');
+
+    const back = screen.getByRole('link', { name: BACK });
+    const heading = screen.getByRole('heading', { name: HEADING });
+
+    expect(back).toHaveAttribute('href', '/objects/obj-1');
+    expect(back.compareDocumentPosition(heading) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('href follows task.object_id (obj-2 → /objects/obj-2)', async () => {
+    vi.mocked(fetchTask).mockResolvedValue({ ...TASK, object_id: 'obj-2', object: { name: 'Склад' } });
+    renderCard(EXECUTOR);
+
+    await screen.findByText('Залить фундамент');
+
+    expect(screen.getByRole('link', { name: BACK })).toHaveAttribute('href', '/objects/obj-2');
+  });
+
+  it('clicking «← Назад» opens the object card', async () => {
+    const user = userEvent.setup();
+
+    await renderLoaded(EXECUTOR, 'new');
+    await user.click(screen.getByRole('link', { name: BACK }));
+
+    expect(await screen.findByText(OBJECT_CARD_PROBE)).toBeInTheDocument();
+  });
+
+  it('not rendered while the task is loading', () => {
+    vi.mocked(fetchTask).mockReturnValue(new Promise<TaskDetails | null>(() => undefined));
+    renderCard(MANAGER);
+
+    expect(screen.queryByRole('link', { name: BACK })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ['manager', MANAGER],
+    ['executor', EXECUTOR],
+  ] as const)('%s: fetchTask → null («Не найдено или нет доступа») — no «← Назад»', async (_role, profile) => {
+    vi.mocked(fetchTask).mockResolvedValue(null);
+    renderCard(profile);
+
+    expect(await screen.findByText(NOT_FOUND_TEXT)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: BACK })).not.toBeInTheDocument();
+  });
+});
+
 describe('§8.2 «Если объект/задача не найдены (RLS вернул пусто) — «Не найдено или нет доступа»»', () => {
   it.each([
     ['manager', MANAGER],
@@ -596,7 +649,7 @@ describe('§8.4 «Последний комментарий доработки (
   });
 });
 
-describe('§8.3 п.4 «История: список по changed_at по возрастанию — дата/время, кто, «из → в» (для создания «Создана»), комментарий»', () => {
+describe('§8.3 п.4 «История» — массив fetchTaskHistory в обратном порядке (новые сверху): дата/время, кто, «из → в» (для создания «Создана»), комментарий', () => {
   it('loads history via fetchTaskHistory("task-1") and renders heading «История» with headers «Дата», «Кто», «Изменение», «Комментарий»', async () => {
     await renderLoaded(EXECUTOR, 'new');
     await screen.findByText('Создана');
@@ -609,7 +662,7 @@ describe('§8.3 п.4 «История: список по changed_at по воз�
     expect(screen.getByRole('columnheader', { name: 'Комментарий' })).toBeInTheDocument();
   });
 
-  it('rows in API order: «Создана», then «из → в» with actor names, ru-RU dates and comment', async () => {
+  it('rows in reversed API order (newest first): «из → в» with actor names, ru-RU dates and comment, «Создана» last', async () => {
     await renderLoaded(EXECUTOR, 'new');
     await screen.findByText('Создана');
 
@@ -617,10 +670,11 @@ describe('§8.3 п.4 «История: список по changed_at по воз�
 
     expect(rows).toHaveLength(4);
 
-    const first = nth(rows, 0);
-    const second = nth(rows, 1);
-    const third = nth(rows, 2);
-    const fourth = nth(rows, 3);
+    // first..fourth — элементы API по возрастанию; на экране строка = HISTORY[len - 1 - i].
+    const first = nth(rows, 3);
+    const second = nth(rows, 2);
+    const third = nth(rows, 1);
+    const fourth = nth(rows, 0);
 
     expect(within(first).getByText('Создана')).toBeInTheDocument();
     expect(within(first).getByText('Иван Петров')).toBeInTheDocument();

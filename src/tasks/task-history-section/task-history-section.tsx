@@ -66,7 +66,7 @@ export function TaskHistorySection({ taskId }: TaskHistorySectionProps): JSX.Ele
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {data.map((entry) => (
+            {[...data].reverse().map((entry) => (
               <Table.Tr key={`${entry.kind}-${entry.id}`}>
                 <Table.Td>{new Date(entry.changed_at).toLocaleString('ru-RU')}</Table.Td>
                 <Table.Td>{entry.actor?.full_name ?? SYSTEM_ACTOR_LABEL}</Table.Td>

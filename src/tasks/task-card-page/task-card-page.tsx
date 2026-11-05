@@ -6,6 +6,7 @@ import { ROUTE_PATHS } from '../../app/app.constants';
 import { useCurrentProfile } from '../../auth/auth-context/auth-context';
 import { NOT_FOUND_OR_NO_ACCESS_TEXT } from '../../shared/errors/errors.constants';
 import { useNotifyError } from '../../shared/errors/errors.hooks';
+import { PageHeader } from '../../shared/page-header/page-header';
 import { TaskEditModal } from '../task-edit-modal/task-edit-modal';
 import { TaskHistorySection } from '../task-history-section/task-history-section';
 import { TaskStatusActions } from '../task-status-actions/task-status-actions';
@@ -37,7 +38,10 @@ export function TaskCardPage(): JSX.Element {
 
   return (
     <>
-      <Title order={2}>Карточка задачи</Title>
+      <PageHeader
+        title="Карточка задачи"
+        backTo={task ? generatePath(ROUTE_PATHS.object, { objectId: task.object_id }) : undefined}
+      />
       {isPending && !error && <Loader />}
       {task === null && <Text>{NOT_FOUND_OR_NO_ACCESS_TEXT}</Text>}
       {task && (

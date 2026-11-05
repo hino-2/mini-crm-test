@@ -7,7 +7,9 @@ export const ERROR_MESSAGES: Readonly<Record<DbErrorCode, string>> = {
   NOT_ALLOWED: 'Недостаточно прав для этого действия',
   COMMENT_REQUIRED: 'Укажите комментарий',
   STATUS_CHANGE_FORBIDDEN: 'Статус меняется только через действия задачи',
-  TASK_ACCEPTED_READONLY: 'Принятую задачу нельзя изменить',
+  OBJECT_NOT_FOUND: 'Объект не найден',
+  OBJECT_DELETED: 'Объект находится в корзине — сначала восстановите его',
+  TASK_DELETED: 'Задача находится в корзине',
   ASSIGNEE_NOT_EXECUTOR: 'Исполнителем может быть только пользователь с ролью «Исполнитель»',
   IMMUTABLE_FIELD: 'Поле нельзя изменить',
 };

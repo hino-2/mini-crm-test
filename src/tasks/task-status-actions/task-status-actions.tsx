@@ -14,8 +14,11 @@ export function TaskStatusActions({ task }: TaskStatusActionsProps): JSX.Element
   const actions = getAvailableActions(task, profile);
   const reworkComment =
     profile.role === 'executor' && task.status === 'rework'
-      ? ((history.data ?? []).filter((entry) => entry.to_status === 'rework').at(-1)?.comment ??
-        null)
+      ? ((history.data ?? [])
+          .flatMap((entry) =>
+            entry.kind === 'status' && entry.to_status === 'rework' ? [entry.comment] : [],
+          )
+          .at(-1) ?? null)
       : null;
 
   // The modal state outlives the action (this component stays mounted): drop it as soon as the

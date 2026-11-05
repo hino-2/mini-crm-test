@@ -24,7 +24,9 @@ export function ObjectCardPage(): JSX.Element {
   const confirmDelete = (taskCount: number): string =>
     modals.openConfirmModal({
       title: 'Удалить объект?',
-      children: <Text>{`Будет удалено задач: ${taskCount}. Действие необратимо`}</Text>,
+      children: (
+        <Text>{`Объект будет перемещён в корзину вместе с задачами: ${taskCount}. Восстановить его можно из корзины.`}</Text>
+      ),
       labels: { confirm: 'Удалить', cancel: 'Отмена' },
       confirmProps: { color: 'red' },
       onConfirm: () => del.mutate(undefined, { onSuccess: () => navigate(ROUTE_PATHS.objects) }),

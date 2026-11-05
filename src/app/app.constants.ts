@@ -8,6 +8,7 @@ export const ROUTE_PATHS = {
   object: '/objects/:objectId',
   task: '/tasks/:taskId',
   myTasks: '/my-tasks',
+  trash: '/trash',
 } as const;
 
 export const ROLE_HOME_PATHS: Readonly<Record<UserRole, string>> = {
@@ -16,7 +17,10 @@ export const ROLE_HOME_PATHS: Readonly<Record<UserRole, string>> = {
 };
 
 export const NAV_LINKS: Readonly<Record<UserRole, readonly NavLinkItem[]>> = {
-  manager: [{ label: 'Объекты', to: ROUTE_PATHS.objects }],
+  manager: [
+    { label: 'Объекты', to: ROUTE_PATHS.objects },
+    { label: 'Корзина', to: ROUTE_PATHS.trash },
+  ],
   executor: [
     { label: 'Мои задачи', to: ROUTE_PATHS.myTasks },
     { label: 'Объекты', to: ROUTE_PATHS.objects },

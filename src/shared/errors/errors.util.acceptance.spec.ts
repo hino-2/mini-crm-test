@@ -14,9 +14,11 @@ const CODE_TEXTS: ReadonlyArray<readonly [DbErrorCode, string]> = [
   ['NOT_ALLOWED', 'Недостаточно прав для этого действия'],
   ['COMMENT_REQUIRED', 'Укажите комментарий'],
   ['STATUS_CHANGE_FORBIDDEN', 'Статус меняется только через действия задачи'],
-  ['TASK_ACCEPTED_READONLY', 'Принятую задачу нельзя изменить'],
   ['ASSIGNEE_NOT_EXECUTOR', 'Исполнителем может быть только пользователь с ролью «Исполнитель»'],
   ['IMMUTABLE_FIELD', 'Поле нельзя изменить'],
+  ['OBJECT_NOT_FOUND', 'Объект не найден'],
+  ['OBJECT_DELETED', 'Объект находится в корзине — сначала восстановите его'],
+  ['TASK_DELETED', 'Задача находится в корзине'],
 ];
 
 describe('§5.8 getErrorMessage: code → Russian UI text', () => {
@@ -32,6 +34,10 @@ describe('§5.8 getErrorMessage: code → Russian UI text', () => {
 describe('§5.8 «неизвестная ошибка → «Не удалось выполнить действие»»', () => {
   it.each<[string, unknown]>([
     ['unknown code', { code: 'P0001', message: 'SOMETHING_ELSE', details: null, hint: null }],
+    [
+      'removed code TASK_ACCEPTED_READONLY (step 8)',
+      { code: 'P0001', message: 'TASK_ACCEPTED_READONLY', details: null, hint: null },
+    ],
     ['prototype key "toString"', { message: 'toString' }],
     ['lowercase known code', { message: 'not_allowed' }],
     ['null', null],

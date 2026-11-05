@@ -8,6 +8,7 @@ import {
   createManager,
   createObject,
   createTask,
+  readFieldHistory,
   uniqueSuffix,
 } from '../fixtures/fixtures';
 import type {
@@ -90,15 +91,10 @@ describe('§6.2 / §10.1 Writes: executor cannot write objects and tasks', () =>
     expect((await readObject(admin, object.id))?.name).toBe(object.name);
   });
 
-  it('§6.2: executor DELETE of a visible object affects 0 rows, object still exists', async () => {
-    const { data, error } = await executor.client
-      .from('objects')
-      .delete()
-      .eq('id', object.id)
-      .select();
+  it('AC1: executor DELETE of a visible object → 42501, object still exists', async () => {
+    const { error } = await executor.client.from('objects').delete().eq('id', object.id);
 
-    expect(error).toBeNull();
-    expect(data).toEqual([]);
+    expect(error?.code).toBe('42501');
     expect(await readObject(admin, object.id)).not.toBeNull();
   });
 
@@ -122,15 +118,10 @@ describe('§6.2 / §10.1 Writes: executor cannot write objects and tasks', () =>
     expect((await readTask(admin, task.id))?.title).toBe(task.title);
   });
 
-  it('§6.2: executor DELETE of own task affects 0 rows, task still exists', async () => {
-    const { data, error } = await executor.client
-      .from('tasks')
-      .delete()
-      .eq('id', task.id)
-      .select();
+  it('AC1: executor DELETE of own task → 42501, task still exists', async () => {
+    const { error } = await executor.client.from('tasks').delete().eq('id', task.id);
 
-    expect(error).toBeNull();
-    expect(data).toEqual([]);
+    expect(error?.code).toBe('42501');
     expect(await readTask(admin, task.id)).not.toBeNull();
   });
 });
@@ -269,7 +260,7 @@ describe('§6.3 / §7.1 / §7.2 / §10.1 Writes: manager', () => {
   });
 });
 
-describe('§7.2 / §12.2 / §12.3 Writes: accepted task', () => {
+describe('AC6 / AC1 Writes: accepted task', () => {
   let admin: SupabaseClient;
   let manager: TestUser;
   let executor: TestUser;
@@ -286,27 +277,32 @@ describe('§7.2 / §12.2 / §12.3 Writes: accepted task', () => {
     accepted = await advanceTask({ manager, executor }, task.id, 'accepted');
   });
 
-  it('§10.1: manager UPDATE of accepted task → TASK_ACCEPTED_READONLY', async () => {
-    const { error } = await manager.client
-      .from('tasks')
-      .update({ title: `Changed ${uniqueSuffix()}` })
-      .eq('id', accepted.id);
-
-    expect(error?.message).toBe('TASK_ACCEPTED_READONLY');
-    expect((await readTask(admin, accepted.id))?.title).toBe(accepted.title);
-  });
-
-  it('§10.1 / §12.3: manager DELETE of accepted task succeeds, history goes with it', async () => {
+  it('AC6: manager UPDATE of accepted task succeeds, status stays accepted', async () => {
+    const title = `Changed ${uniqueSuffix()}`;
     const { data, error } = await manager.client
       .from('tasks')
-      .delete()
+      .update({ title })
       .eq('id', accepted.id)
       .select();
 
     expect(error).toBeNull();
-    expect(((data ?? []) as TaskRow[]).map((r) => r.id)).toEqual([accepted.id]);
-    expect(await readTask(admin, accepted.id)).toBeNull();
-    expect(await readHistory(admin, accepted.id)).toEqual([]);
+    expect(((data ?? []) as TaskRow[]).map((r) => [r.title, r.status])).toEqual([
+      [title, 'accepted'],
+    ]);
+
+    const stored = await readTask(admin, accepted.id);
+
+    expect(stored?.title).toBe(title);
+    expect(stored?.status).toBe('accepted');
+  });
+
+  it('AC1: manager DELETE of accepted task → 42501, row and history remain', async () => {
+    const historyBefore = await readHistory(admin, accepted.id);
+    const { error } = await manager.client.from('tasks').delete().eq('id', accepted.id);
+
+    expect(error?.code).toBe('42501');
+    expect(await readTask(admin, accepted.id)).not.toBeNull();
+    expect(await readHistory(admin, accepted.id)).toHaveLength(historyBefore.length);
   });
 });
 
@@ -341,12 +337,22 @@ describe('§7.2 / §12.6 / §10.1 Writes: reassignment', () => {
     }
   });
 
-  it('§12.6: status unchanged and no history row written', async () => {
+  it('§12.6 / AC7: status unchanged, no status-history row, one assignee_id field-history row', async () => {
     const stored = await readTask(admin, task.id);
 
     expect(stored?.assignee_id).toBe(b.id);
     expect(stored?.status).toBe('in_progress');
     expect(await readHistory(admin, task.id)).toHaveLength(historyCountBefore);
+
+    const fieldRows = await readFieldHistory(admin, [task.id]);
+
+    expect(fieldRows).toHaveLength(1);
+    expect(fieldRows[0]).toMatchObject({
+      field: 'assignee_id',
+      old_value: a.id,
+      new_value: b.id,
+      changed_by: manager.id,
+    });
   });
 
   it('§10.1: old assignee no longer sees the task nor the object', async () => {

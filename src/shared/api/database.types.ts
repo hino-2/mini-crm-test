@@ -25,19 +25,25 @@ export type Database = {
           Tables: {
             "objects": {
                   Row: {
-                    "address": string,"created_at": string,"created_by": string,"id": string,"name": string,"updated_at": string
+                    "address": string,"created_at": string,"created_by": string,"deleted_at": string | null,"deleted_by": string | null,"id": string,"name": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "address": string,"created_at"?: string,"created_by"?: string,"id"?: string,"name": string,"updated_at"?: string
+                    "address": string,"created_at"?: string,"created_by"?: string,"deleted_at"?: string | null,"deleted_by"?: string | null,"id"?: string,"name": string,"updated_at"?: string
                   }
                   Update: {
-                    "address"?: string,"created_at"?: string,"created_by"?: string,"id"?: string,"name"?: string,"updated_at"?: string
+                    "address"?: string,"created_at"?: string,"created_by"?: string,"deleted_at"?: string | null,"deleted_by"?: string | null,"id"?: string,"name"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
       foreignKeyName: "objects_created_by_fkey"
       columns: ["created_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "objects_deleted_by_fkey"
+      columns: ["deleted_by"]
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
@@ -56,6 +62,32 @@ isOneToOne: false
                   }
                   Relationships: [
                     
+                  ]
+                },"task_field_history": {
+                  Row: {
+                    "changed_at": string,"changed_by": string | null,"field": Database["public"]['Enums']["task_field"],"id": number,"new_value": string | null,"old_value": string | null,"task_id": string
+                  }
+                  ComputedFields: never
+                  Insert: {
+                    "changed_at"?: string,"changed_by"?: string | null,"field": Database["public"]['Enums']["task_field"],"id"?: never,"new_value"?: string | null,"old_value"?: string | null,"task_id": string
+                  }
+                  Update: {
+                    "changed_at"?: string,"changed_by"?: string | null,"field"?: Database["public"]['Enums']["task_field"],"id"?: never,"new_value"?: string | null,"old_value"?: string | null,"task_id"?: string
+                  }
+                  Relationships: [
+                    {
+      foreignKeyName: "task_field_history_changed_by_fkey"
+      columns: ["changed_by"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "task_field_history_task_id_fkey"
+      columns: ["task_id"]
+isOneToOne: false
+      referencedRelation: "tasks"
+      referencedColumns: ["id"]
+    }
                   ]
                 },"task_status_history": {
                   Row: {
@@ -85,14 +117,14 @@ isOneToOne: false
                   ]
                 },"tasks": {
                   Row: {
-                    "assignee_id": string,"author_id": string,"created_at": string,"description": string,"id": string,"object_id": string,"status": Database["public"]['Enums']["task_status"],"title": string,"updated_at": string
+                    "assignee_id": string,"author_id": string,"created_at": string,"deleted_at": string | null,"deleted_by": string | null,"description": string,"id": string,"object_id": string,"status": Database["public"]['Enums']["task_status"],"title": string,"updated_at": string
                   }
                   ComputedFields: never
                   Insert: {
-                    "assignee_id": string,"author_id"?: string,"created_at"?: string,"description"?: string,"id"?: string,"object_id": string,"status"?: Database["public"]['Enums']["task_status"],"title": string,"updated_at"?: string
+                    "assignee_id": string,"author_id"?: string,"created_at"?: string,"deleted_at"?: string | null,"deleted_by"?: string | null,"description"?: string,"id"?: string,"object_id": string,"status"?: Database["public"]['Enums']["task_status"],"title": string,"updated_at"?: string
                   }
                   Update: {
-                    "assignee_id"?: string,"author_id"?: string,"created_at"?: string,"description"?: string,"id"?: string,"object_id"?: string,"status"?: Database["public"]['Enums']["task_status"],"title"?: string,"updated_at"?: string
+                    "assignee_id"?: string,"author_id"?: string,"created_at"?: string,"deleted_at"?: string | null,"deleted_by"?: string | null,"description"?: string,"id"?: string,"object_id"?: string,"status"?: Database["public"]['Enums']["task_status"],"title"?: string,"updated_at"?: string
                   }
                   Relationships: [
                     {
@@ -104,6 +136,12 @@ isOneToOne: false
     },{
       foreignKeyName: "tasks_author_id_fkey"
       columns: ["author_id"]
+isOneToOne: false
+      referencedRelation: "profiles"
+      referencedColumns: ["id"]
+    },{
+      foreignKeyName: "tasks_deleted_by_fkey"
+      columns: ["deleted_by"]
 isOneToOne: false
       referencedRelation: "profiles"
       referencedColumns: ["id"]
@@ -126,6 +164,8 @@ isOneToOne: false
               "assignee_id": string,
 "author_id": string,
 "created_at": string,
+"deleted_at": string | null,
+"deleted_by": string | null,
 "description": string,
 "id": string,
 "object_id": string,
@@ -138,10 +178,32 @@ isOneToOne: false
         to: "tasks"
         isOneToOne: true
         isSetofReturn: false
-      } }
+      } },
+"list_deleted_objects":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "address": string,"deleted_at": string,"deleted_by_name": string,"id": string,"name": string
+            }[]
+                           },
+"list_deleted_tasks":
+{ Args: Record<PropertyKey, never>; Returns: {
+              "deleted_at": string,"deleted_by_name": string,"id": string,"object_deleted": boolean,"object_id": string,"object_name": string,"title": string
+            }[]
+                           },
+"restore_object":
+{ Args: { "p_object_id": string }; Returns: undefined
+                           },
+"restore_task":
+{ Args: { "p_task_id": string }; Returns: undefined
+                           },
+"soft_delete_object":
+{ Args: { "p_object_id": string }; Returns: undefined
+                           },
+"soft_delete_task":
+{ Args: { "p_task_id": string }; Returns: undefined
+                           }
           }
           Enums: {
-            "task_status": "new"|"in_progress"|"on_review"|"accepted"|"rework","user_role": "manager"|"executor"
+            "task_field": "title"|"description"|"assignee_id"|"deleted_at","task_status": "new"|"in_progress"|"on_review"|"accepted"|"rework","user_role": "manager"|"executor"
           }
           CompositeTypes: {
             [_ in never]: never
@@ -261,7 +323,7 @@ export const Constants = {
           }
         },"public": {
           Enums: {
-            "task_status": ["new", "in_progress", "on_review", "accepted", "rework"],"user_role": ["manager", "executor"]
+            "task_field": ["title", "description", "assignee_id", "deleted_at"],"task_status": ["new", "in_progress", "on_review", "accepted", "rework"],"user_role": ["manager", "executor"]
           }
         }
 } as const

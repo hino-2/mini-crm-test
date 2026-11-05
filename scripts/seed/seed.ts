@@ -172,11 +172,12 @@ async function signInAll(url: string, anonKey: string, password: string): Promis
   return Object.fromEntries(entries) as SeedClients;
 }
 
+// Reads go through the service_role client: soft-deleted demo objects are hidden by RLS.
 async function findDemoObjects(
-  manager1: SeedClient,
+  admin: SeedClient,
   manager1Id: string,
 ): Promise<SeedObjectSummary[]> {
-  const { data, error } = await manager1
+  const { data, error } = await admin
     .from('objects')
     .select('id, name')
     .in(
@@ -186,28 +187,28 @@ async function findDemoObjects(
     .eq('created_by', manager1Id);
 
   if (error) {
-    throw fail('find demo objects', 'manager1', error.message);
+    throw fail('find demo objects', 'service_role', error.message);
   }
 
   return data;
 }
 
 async function readDemoTasks(
-  manager1: SeedClient,
+  admin: SeedClient,
   objectIds: readonly string[],
 ): Promise<SeedTaskSummary[]> {
   if (objectIds.length === 0) {
     return [];
   }
 
-  const { data, error } = await manager1
+  const { data, error } = await admin
     .from('tasks')
     .select('id, object_id, title, assignee_id, status')
     .in('object_id', [...objectIds])
     .order('created_at');
 
   if (error) {
-    throw fail('read demo tasks', 'manager1', error.message);
+    throw fail('read demo tasks', 'service_role', error.message);
   }
 
   return data.map((task) => ({
@@ -308,7 +309,7 @@ export async function runSeed(options: SeedOptions): Promise<SeedSummary> {
     throw new Error('Seed failed: manager1 missing from demo users');
   }
 
-  const existing = await findDemoObjects(clients.manager1, manager1Id);
+  const existing = await findDemoObjects(admin, manager1Id);
   let deletedObjectCount = 0;
 
   if (existing.length > 0 && !options.reset) {
@@ -326,14 +327,15 @@ export async function runSeed(options: SeedOptions): Promise<SeedSummary> {
       deletedObjectCount: 0,
       objects: existing,
       tasks: await readDemoTasks(
-        clients.manager1,
+        admin,
         existing.map((object) => object.id),
       ),
     };
   }
 
   if (existing.length > 0) {
-    const { data, error } = await clients.manager1
+    // Physical deletion is service_role only (authenticated has no DELETE grant).
+    const { data, error } = await admin
       .from('objects')
       .delete()
       .in(
@@ -343,13 +345,13 @@ export async function runSeed(options: SeedOptions): Promise<SeedSummary> {
       .select('id');
 
     if (error) {
-      throw fail('delete demo objects', 'manager1', error.message);
+      throw fail('delete demo objects', 'service_role', error.message);
     }
 
     if (data.length !== existing.length) {
       throw fail(
         'delete demo objects',
-        'manager1',
+        'service_role',
         `expected ${existing.length} deleted, got ${data.length}`,
       );
     }

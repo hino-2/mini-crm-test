@@ -122,20 +122,41 @@ describe('§6.2 / §7.3 / §10.1 History: authenticated cannot write', () => {
   });
 });
 
-describe('§7.3 / §12.3 / §12.4 / §10.1 History: cascade deletes', () => {
-  it('§12.3: deleting a task removes its history', async () => {
+describe('AC1 / §7.3 History: no hard delete via API; cascade only via service_role', () => {
+  it('AC1: manager DELETE of a task → 42501, task and its history intact', async () => {
     const object = await createObject(m.client);
     const task = await taskIn(object, 'on_review');
+    const before = await readHistory(admin, [task.id]);
 
-    expect((await readHistory(admin, [task.id])).length).toBeGreaterThanOrEqual(3);
+    expect(before.length).toBeGreaterThanOrEqual(3);
 
     const { error } = await m.client.from('tasks').delete().eq('id', task.id);
 
-    expect(error).toBeNull();
-    expect(await readHistory(admin, [task.id])).toEqual([]);
+    expect(error?.code).toBe('42501');
+    expect(await readHistory(admin, [task.id])).toHaveLength(before.length);
+
+    const tasks = await admin.from('tasks').select('id').eq('id', task.id);
+
+    expect(tasks.data).toEqual([{ id: task.id }]);
   });
 
-  it('§12.4: deleting an object removes its tasks (incl. accepted) and their history', async () => {
+  it('AC1: manager DELETE of an object → 42501, tasks and history intact', async () => {
+    const object = await createObject(m.client);
+    const accepted = await taskIn(object, 'accepted');
+    const taskIds = [accepted.id];
+    const before = await readHistory(admin, taskIds);
+
+    const { error } = await m.client.from('objects').delete().eq('id', object.id);
+
+    expect(error?.code).toBe('42501');
+
+    const tasks = await admin.from('tasks').select('id').eq('object_id', object.id);
+
+    expect(tasks.data).toEqual([{ id: accepted.id }]);
+    expect(await readHistory(admin, taskIds)).toHaveLength(before.length);
+  });
+
+  it('§2.11: service_role hard DELETE of an object removes its tasks (incl. accepted) and their history', async () => {
     const object = await createObject(m.client);
     const accepted = await taskIn(object, 'accepted');
     const onReview = await taskIn(object, 'on_review');
@@ -143,7 +164,7 @@ describe('§7.3 / §12.3 / §12.4 / §10.1 History: cascade deletes', () => {
 
     expect((await readHistory(admin, taskIds)).length).toBeGreaterThan(0);
 
-    const { error } = await m.client.from('objects').delete().eq('id', object.id);
+    const { error } = await admin.from('objects').delete().eq('id', object.id);
 
     expect(error).toBeNull();
 

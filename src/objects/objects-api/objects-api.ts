@@ -60,7 +60,7 @@ export async function updateObject(objectId: string, input: ObjectInput): Promis
 }
 
 export async function deleteObject(objectId: string): Promise<void> {
-  const { error } = await supabase.from('objects').delete().eq('id', objectId);
+  const { error } = await supabase.rpc('soft_delete_object', { p_object_id: objectId });
 
   if (error) {
     throw error;

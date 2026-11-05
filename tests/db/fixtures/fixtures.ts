@@ -6,16 +6,22 @@ import {
   FIXTURE_REWORK_COMMENT,
   TEST_EMAIL_DOMAIN,
   TEST_PASSWORD,
+  TRASH_RPC_ARG,
 } from './fixtures.constants';
 import type {
   CreateObjectInput,
   CreateTaskInput,
   CreateTestUserOptions,
+  FieldHistoryRow,
+  HistoryRow,
   ObjectRow,
+  ProfileRow,
+  RpcRawResult,
   TaskActors,
   TaskRow,
   TaskStatus,
   TestUser,
+  TrashRpc,
 } from './fixtures.type';
 
 export function uniqueSuffix(): string {
@@ -169,4 +175,91 @@ export async function advanceTask(
   }
 
   throw new Error(`advanceTask failed: unsupported target ${String(target)}`);
+}
+
+/** Calls one of the four delete/restore RPCs and returns the raw result (no throw). */
+export async function callTrashRpc(
+  client: SupabaseClient,
+  fn: TrashRpc,
+  id: string,
+): Promise<RpcRawResult> {
+  const { data, error } = await client.rpc(fn, { [TRASH_RPC_ARG[fn]]: id });
+
+  return { data: data as unknown, error };
+}
+
+/** Calls one of the four delete/restore RPCs; throws on error (fixture setup). */
+export async function trashRpc(user: TestUser, fn: TrashRpc, id: string): Promise<void> {
+  const { error } = await callTrashRpc(user.client, fn, id);
+
+  if (error) {
+    throw new Error(`${fn} failed: ${error.message}`);
+  }
+}
+
+export async function readTaskAsAdmin(admin: SupabaseClient, id: string): Promise<TaskRow | null> {
+  const { data, error } = await admin.from('tasks').select('*').eq('id', id).maybeSingle();
+
+  if (error) {
+    throw new Error(`readTaskAsAdmin failed: ${error.message}`);
+  }
+
+  return data as TaskRow | null;
+}
+
+export async function readObjectAsAdmin(
+  admin: SupabaseClient,
+  id: string,
+): Promise<ObjectRow | null> {
+  const { data, error } = await admin.from('objects').select('*').eq('id', id).maybeSingle();
+
+  if (error) {
+    throw new Error(`readObjectAsAdmin failed: ${error.message}`);
+  }
+
+  return data as ObjectRow | null;
+}
+
+export async function readStatusHistory(
+  client: SupabaseClient,
+  taskIds: string[],
+): Promise<HistoryRow[]> {
+  const { data, error } = await client
+    .from('task_status_history')
+    .select('*')
+    .in('task_id', taskIds)
+    .order('id', { ascending: true });
+
+  if (error) {
+    throw new Error(`readStatusHistory failed: ${error.message}`);
+  }
+
+  return (data ?? []) as HistoryRow[];
+}
+
+export async function readFieldHistory(
+  client: SupabaseClient,
+  taskIds: string[],
+): Promise<FieldHistoryRow[]> {
+  const { data, error } = await client
+    .from('task_field_history')
+    .select('*')
+    .in('task_id', taskIds)
+    .order('id', { ascending: true });
+
+  if (error) {
+    throw new Error(`readFieldHistory failed: ${error.message}`);
+  }
+
+  return (data ?? []) as FieldHistoryRow[];
+}
+
+export async function readFullName(admin: SupabaseClient, userId: string): Promise<string> {
+  const { data, error } = await admin.from('profiles').select('full_name').eq('id', userId).single();
+
+  if (error) {
+    throw new Error(`readFullName failed: ${error.message}`);
+  }
+
+  return (data as Pick<ProfileRow, 'full_name'>).full_name;
 }

@@ -14,6 +14,13 @@ import type { Profile } from '../auth/auth.type';
 import { App } from './app';
 import { AppProviders } from './app-providers';
 
+vi.mock('../trash/trash-api/trash-api', () => ({
+  fetchDeletedObjects: vi.fn().mockResolvedValue([]),
+  fetchDeletedTasks: vi.fn().mockResolvedValue([]),
+  restoreObject: vi.fn().mockResolvedValue(undefined),
+  restoreTask: vi.fn().mockResolvedValue(undefined),
+}));
+
 // Тестовый хелпер: компонент, которому нужен QueryClient из контекста.
 function QueryClientConsumer(): JSX.Element {
   const client = useQueryClient();
@@ -259,6 +266,44 @@ describe('§8.1 header: «имя, роль, ссылки по роли, кноп
     );
 
     await user.click(await screen.findByRole('button', { name: 'Выйти' }));
+
+    expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument();
+  });
+});
+
+describe('step 8 AC8: /trash route (manager only) and «Корзина» nav link', () => {
+  it('manager header has link «Корзина» → /trash next to «Объекты»', async () => {
+    renderApp('/objects', AS_MANAGER());
+
+    await screen.findByRole('heading', { name: 'Объекты' });
+
+    expect(screen.getByRole('link', { name: 'Объекты' })).toHaveAttribute('href', '/objects');
+    expect(screen.getByRole('link', { name: 'Корзина' })).toHaveAttribute('href', '/trash');
+  });
+
+  it('executor header has no «Корзина» link', async () => {
+    renderApp('/objects', AS_EXECUTOR());
+
+    await screen.findByRole('heading', { name: 'Объекты' });
+
+    expect(screen.queryByRole('link', { name: 'Корзина' })).not.toBeInTheDocument();
+  });
+
+  it('manager at /trash sees heading «Корзина»', async () => {
+    renderApp('/trash', AS_MANAGER());
+
+    expect(await screen.findByRole('heading', { name: 'Корзина' })).toBeInTheDocument();
+  });
+
+  it('executor at /trash is redirected to «Мои задачи»', async () => {
+    renderApp('/trash', AS_EXECUTOR());
+
+    expect(await screen.findByRole('heading', { name: 'Мои задачи' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Корзина' })).not.toBeInTheDocument();
+  });
+
+  it('guest at /trash is redirected to the login screen «Вход»', async () => {
+    renderApp('/trash', GUEST());
 
     expect(await screen.findByRole('heading', { name: 'Вход' })).toBeInTheDocument();
   });

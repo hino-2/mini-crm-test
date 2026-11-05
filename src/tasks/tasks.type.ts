@@ -29,7 +29,10 @@ export type TaskDetails = Pick<
   author: { full_name: string };
 };
 
-export type TaskHistoryEntry = {
+export type TaskField = 'title' | 'description' | 'assignee_id' | 'deleted_at';
+
+export type TaskStatusHistoryEntry = {
+  kind: 'status';
   id: number;
   from_status: TaskStatus | null;
   to_status: TaskStatus;
@@ -38,12 +41,22 @@ export type TaskHistoryEntry = {
   actor: { full_name: string };
 };
 
+export type TaskFieldHistoryEntry = {
+  kind: 'field';
+  id: number;
+  field: TaskField;
+  old_value: string | null;
+  new_value: string | null;
+  changed_at: string;
+  actor: { full_name: string } | null;
+};
+
+export type TaskHistoryEntry = TaskStatusHistoryEntry | TaskFieldHistoryEntry;
+
 export type MyTaskItem = Pick<Task, 'id' | 'title' | 'status' | 'created_at'> & {
   object: { name: string };
 };
 
-export type TaskUpdateInput = TaskCreateInput;
-
-export type TaskEditFormValues = TaskFormValues & { object_id: string | null };
+export type TaskUpdateInput = Pick<Task, 'title' | 'description' | 'assignee_id'>;
 
 export type ChangeTaskStatusVariables = { toStatus: TaskStatus; comment: string | null };

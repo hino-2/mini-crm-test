@@ -165,13 +165,15 @@ email, если имя не передано.
 | `created_by` | uuid | not null, FK → profiles(id), default `auth.uid()` |
 | `created_at` | timestamptz | not null, default `now()` |
 | `updated_at` | timestamptz | not null, default `now()`, обновляется триггером |
+| `deleted_at` | timestamptz | null; не null = объект в корзине (мягкое удаление); пишется только RPC |
+| `deleted_by` | uuid | null, FK → profiles(id); кто отправил в корзину; пишется только RPC |
 
 ### 5.4. `tasks`
 
 | Колонка | Тип | Ограничения |
 | --- | --- | --- |
 | `id` | uuid | PK, default `gen_random_uuid()` |
-| `object_id` | uuid | not null, FK → objects(id) **on delete cascade** |
+| `object_id` | uuid | not null, FK → objects(id) **on delete cascade** (каскад только при физическом удалении service_role); после создания неизменяем |
 | `title` | text | not null, check длина trim 1..200 |
 | `description` | text | not null, default `''`, check длина ≤ 5000 |
 | `assignee_id` | uuid | not null, FK → profiles(id) (restrict); профиль обязан иметь роль `executor` (триггер) |
@@ -179,8 +181,15 @@ email, если имя не передано.
 | `author_id` | uuid | not null, FK → profiles(id), default `auth.uid()` |
 | `created_at` | timestamptz | not null, default `now()` |
 | `updated_at` | timestamptz | not null, default `now()`, обновляется триггером |
+| `deleted_at` | timestamptz | null; не null = задача в корзине (мягкое удаление); пишется только RPC |
+| `deleted_by` | uuid | null, FK → profiles(id); пишется только RPC |
 
 Индексы: `tasks(object_id)`, `tasks(assignee_id)`.
+
+Мягкое удаление: в корзину помечается только строка объекта, его задачи свою `deleted_at` не
+получают, а скрыты через `objects.deleted_at` (хелперы 6.1). Поэтому восстановление объекта —
+один UPDATE, а задачи, удалённые отдельно, остаются в корзине. Физически строки удаляет только
+`service_role` (каскады FK сохранены для этого пути).
 
 ### 5.5. `task_status_history`
 
@@ -210,8 +219,8 @@ public.change_task_status(p_task_id uuid, p_to_status public.task_status, p_comm
 - Алгоритм (одна транзакция):
   1. `auth.uid()` null → `NOT_AUTHENTICATED`.
   2. `select ... from tasks where id = p_task_id for update`. Нет строки **или** вызывающий не
-     имеет права видеть задачу (правило видимости из 6.2) → `TASK_NOT_FOUND` (не раскрываем
-     существование чужой задачи).
+     имеет права видеть задачу (правило видимости из 6.2; удалённая задача и задача удалённого
+     объекта не видны никому) → `TASK_NOT_FOUND` (не раскрываем существование чужой задачи).
   3. Комментарий нормализуется: `nullif(trim(p_comment), '')`.
   4. Пара (`old.status`, `p_to_status`) должна быть в матрице 5.7, иначе `INVALID_TRANSITION`.
   5. Проверка актора по матрице: для executor-переходов — `auth.uid() = assignee_id` и роль
@@ -234,8 +243,8 @@ public.change_task_status(p_task_id uuid, p_to_status public.task_status, p_comm
 | `on_review` | `rework` | manager | комментарий обязателен |
 | `rework` | `in_progress` | назначенный исполнитель | — |
 
-Всё остальное запрещено. `accepted` — финальный статус. Постановщик **не может** выполнять
-переходы исполнителя и наоборот.
+Всё остальное запрещено. `accepted` — финальный статус (поля принятой задачи при этом
+редактируются, см. 7.2). Постановщик **не может** выполнять переходы исполнителя и наоборот.
 
 ### 5.8. Коды ошибок
 
@@ -252,11 +261,57 @@ public.change_task_status(p_task_id uuid, p_to_status public.task_status, p_comm
 | `NOT_ALLOWED` | RPC | Недостаточно прав для этого действия |
 | `COMMENT_REQUIRED` | RPC | Укажите комментарий |
 | `STATUS_CHANGE_FORBIDDEN` | триггер | Статус меняется только через действия задачи |
-| `TASK_ACCEPTED_READONLY` | триггер | Принятую задачу нельзя изменить |
 | `ASSIGNEE_NOT_EXECUTOR` | триггер | Исполнителем может быть только пользователь с ролью «Исполнитель» |
 | `IMMUTABLE_FIELD` | триггер | Поле нельзя изменить |
+| `OBJECT_NOT_FOUND` | RPC удаления/восстановления объекта | Объект не найден |
+| `OBJECT_DELETED` | триггер INSERT задачи, RPC `restore_task` | Объект находится в корзине — сначала восстановите его |
+| `TASK_DELETED` | триггер UPDATE задачи | Задача находится в корзине |
+
+Код `TASK_ACCEPTED_READONLY` удалён: принятые задачи редактируются. `TASK_NOT_FOUND`,
+`NOT_ALLOWED`, `NOT_AUTHENTICATED` также бросают RPC из 5.10.
 
 Ошибки RLS/grants (`42501`, пустой результат) — штатные ответы PostgREST, не переопределяются.
+
+### 5.9. `task_field_history`
+
+Неизменяемый журнал правок полей задачи (аудит, чтобы не было споров «кто и когда поменял»).
+
+```sql
+create type public.task_field as enum ('title', 'description', 'assignee_id', 'deleted_at');
+```
+
+| Колонка | Тип | Ограничения |
+| --- | --- | --- |
+| `id` | bigint | PK, generated always as identity |
+| `task_id` | uuid | not null, FK → tasks(id) **on delete cascade** |
+| `field` | task_field | not null |
+| `old_value` | text | null |
+| `new_value` | text | null |
+| `changed_by` | uuid | null, FK → profiles(id); null = системная правка (service_role / Dashboard) |
+| `changed_at` | timestamptz | not null, default `now()` |
+
+Индекс: `task_field_history(task_id, changed_at)`. Значения приводятся к `text`
+(`assignee_id` — текст uuid). Отправка задачи в корзину и восстановление пишутся как
+`field = 'deleted_at'` (`null → время` = удалена, `время → null` = восстановлена). Удаление и
+восстановление объекта в историю задач не пишутся (известное ограничение).
+
+### 5.10. RPC корзины
+
+Все функции: `language plpgsql volatile` (списки — `language sql stable`), `security definer`,
+`set search_path = ''`; `EXECUTE` выдан только `authenticated` (отозван у `public`, `anon`,
+`service_role`). Не идемпотентны.
+
+| Функция | Результат | Поведение |
+| --- | --- | --- |
+| `soft_delete_object(p_object_id uuid)` | void | `auth.uid()` null → `NOT_AUTHENTICATED`; не manager → `NOT_ALLOWED`; ставит `deleted_at = now()`, `deleted_by = auth.uid()` у активного объекта; нет такого/уже удалён → `OBJECT_NOT_FOUND` |
+| `restore_object(p_object_id uuid)` | void | те же проверки; сбрасывает `deleted_at/deleted_by` у удалённого объекта; иначе `OBJECT_NOT_FOUND`. Задачи, удалённые отдельно, остаются в корзине |
+| `soft_delete_task(p_task_id uuid)` | void | те же проверки; `select ... for update`; нет задачи, она уже удалена или её объект удалён → `TASK_NOT_FOUND` |
+| `restore_task(p_task_id uuid)` | void | те же проверки; `for update`; нет задачи или она не удалена → `TASK_NOT_FOUND`; объект в корзине → `OBJECT_DELETED` |
+| `list_deleted_objects()` | таблица `(id, name, address, deleted_at, deleted_by_name)` | только удалённые объекты; manager, иначе пустой результат без ошибки; сортировка `deleted_at desc, id` |
+| `list_deleted_tasks()` | таблица `(id, title, object_id, object_name, object_deleted, deleted_at, deleted_by_name)` | только задачи с собственным `deleted_at`; задачи, скрытые лишь из-за удалённого объекта, не показываются; manager, иначе пусто |
+
+`deleted_by_name` = `null`, если `deleted_by` не задан. Списки — функции, потому что RLS скрывает
+удалённое даже от постановщика, а грантов на `deleted_at` у `authenticated` нет.
 
 ---
 
@@ -268,33 +323,43 @@ RLS включён на **всех** таблицах `public`. У `anon` нет
 
 - `private.current_user_role() returns public.user_role` — роль из `profiles` для `auth.uid()`.
 - `private.is_manager() returns boolean`.
-- `private.can_view_task(task_id uuid) returns boolean` — manager ИЛИ `assignee_id = auth.uid()`.
-- `private.can_view_object(object_id uuid) returns boolean` — manager ИЛИ существует задача в
-  объекте с `assignee_id = auth.uid()`.
+- `private.can_view_task(task_id uuid) returns boolean` — задача существует, `deleted_at is null`,
+  её объект не удалён, и (manager ИЛИ `assignee_id = auth.uid()`). Несуществующий id → false.
+- `private.can_view_object(object_id uuid) returns boolean` — объект существует, `deleted_at is
+  null`, и (manager ИЛИ существует неудалённая задача в объекте с `assignee_id = auth.uid()`).
+  Несуществующий id → false, в том числе для manager.
 
 Хелперы нужны, чтобы политики не рекурсировали друг через друга (objects ↔ tasks).
 `EXECUTE` на схему/функции — только `authenticated`.
+
+SELECT-политики `objects` и `tasks` проверяют колонки (`deleted_at`, роль, `assignee_id`)
+напрямую, а хелпер вызывают только по объекту (для задачи — `can_view_object(object_id)`).
+Причина: хелпер видит snapshot начала оператора, и вызов по только что вставленной строке дал бы
+false при `INSERT ... RETURNING`.
 
 ### 6.2. Матрица доступа
 
 | Таблица | SELECT | INSERT | UPDATE | DELETE |
 | --- | --- | --- | --- | --- |
 | `profiles` | все `authenticated` | — | — | — |
-| `objects` | `can_view_object(id)` | manager | manager | manager |
-| `tasks` | `can_view_task(id)` | manager | manager (только разрешённые колонки, 7.2) | manager |
+| `objects` | `deleted_at is null` и (manager ИЛИ `can_view_object(id)`) — см. 6.1 | manager | manager (только видимые, не удалённые) | — (мягкое удаление через RPC 5.10) |
+| `tasks` | `deleted_at is null` и (manager ИЛИ `assignee_id = auth.uid()`) и `can_view_object(object_id)` — см. 6.1 | manager | manager (только разрешённые колонки, 7.2; только видимые) | — (мягкое удаление через RPC 5.10) |
 | `task_status_history` | `can_view_task(task_id)` | — | — | — |
+| `task_field_history` | `can_view_task(task_id)` | — | — | — |
 
 «—» = нет политики и нет grant-а для `authenticated`. История пишется только security
-definer-кодом (RPC и триггер создания).
+definer-кодом (RPC и триггеры). Физически удалять строки может только `service_role`.
 
 ### 6.3. Grants (column-level)
 
-- `objects`: `insert (name, address)`, `update (name, address)`, `select`, `delete` для
-  `authenticated`.
+- `objects`: `insert (name, address)`, `update (name, address)`, `select` для `authenticated`.
+  `delete` не выдан.
 - `tasks`: `insert (object_id, title, description, assignee_id)`,
-  `update (object_id, title, description, assignee_id)`, `select`, `delete` для `authenticated`.
-  Колонки `status`, `author_id`, `created_at`, `updated_at`, `id` клиент записать не может.
-- `task_status_history`: только `select` для `authenticated`.
+  `update (title, description, assignee_id)`, `select` для `authenticated`. `delete` не выдан.
+  Колонки `status`, `author_id`, `created_at`, `updated_at`, `id`, `deleted_at`, `deleted_by` клиент
+  записать не может, `object_id` — только при создании.
+- `task_status_history`, `task_field_history`: только `select` для `authenticated`.
+- `service_role` сохраняет все права (в т.ч. физическое `delete`).
 - `profiles`: только `select` для `authenticated` (исполнитель не может повысить себе роль).
 
 ---
@@ -309,35 +374,55 @@ definer-кодом (RPC и триггер создания).
 - `status := 'new'` (принудительно), `author_id := auth.uid()` если вызов от пользователя
   (при `auth.uid() is null`, т.е. service_role, — допускается явный `author_id`, но он должен
   указывать на manager), `created_at/updated_at := now()`.
+- `deleted_at := null`, `deleted_by := null` (задача не может родиться в корзине).
+- Объект `new.object_id` в корзине (`deleted_at is not null`) → `OBJECT_DELETED`.
 - `assignee_id` должен ссылаться на профиль с ролью `executor`, иначе `ASSIGNEE_NOT_EXECUTOR`.
 
 ### 7.2. `tasks` BEFORE UPDATE
 
-- `old.status = 'accepted'` → `TASK_ACCEPTED_READONLY` (любое изменение).
-- Изменение `id`, `author_id`, `created_at` → `IMMUTABLE_FIELD`.
-- Смена `assignee_id` → новый исполнитель обязан быть `executor` (`ASSIGNEE_NOT_EXECUTOR`).
-  Статус при переназначении не меняется.
-- Если `new.status is distinct from old.status`:
+Порядок проверок:
+
+1. Изменение `id`, `author_id`, `created_at`, `object_id` → `IMMUTABLE_FIELD`.
+2. Правка (`title`, `description`, `assignee_id` или `status` изменились) при `old.deleted_at` или
+   `new.deleted_at` не null либо при удалённом объекте задачи → `TASK_DELETED`. Удаление и
+   восстановление никогда не смешиваются с правками.
+3. Смена `assignee_id` → новый исполнитель обязан быть `executor` (`ASSIGNEE_NOT_EXECUTOR`).
+   Статус при переназначении не меняется.
+4. Если `new.status is distinct from old.status`:
   - флаг транзакции `current_setting('app.status_change', true) = 'rpc'` не выставлен →
     `STATUS_CHANGE_FORBIDDEN` (блокирует прямой UPDATE даже от service_role);
   - пара не в матрице 5.7 → `INVALID_TRANSITION`.
-- `updated_at := now()`.
+5. `updated_at := now()`.
+
+Принятая задача (`accepted`) редактируется как любая другая; статус остаётся `accepted`, а повторный
+переход из него невозможен (`INVALID_TRANSITION`).
 
 RPC выставляет флаг через `set_config('app.status_change', 'rpc', true)` (transaction-local)
 непосредственно перед UPDATE и сбрасывает после.
 
-### 7.3. `task_status_history`
+### 7.3. `task_status_history` и `task_field_history`
+
+Правила одинаковы для обеих таблиц.
 
 - BEFORE UPDATE → всегда исключение (`IMMUTABLE_FIELD`), для любой роли.
-- DELETE: нет grant-а/политики для API. Единственный путь удаления — каскад при удалении задачи
-  (каскадные удаления FK не проверяют grants/RLS). Триггер на DELETE не ставить — он сломает
-  каскад.
+- DELETE: нет grant-а/политики для API. Единственный путь удаления — каскад при физическом
+  удалении задачи или объекта сервисной ролью (каскадные удаления FK не проверяют grants/RLS).
+  Триггер на DELETE не ставить — он сломает каскад.
 - Записи вставляются только security definer-функциями; `changed_by` всегда `auth.uid()`
   (подделать автора/время нельзя: колонки не принимаются от клиента).
 
 ### 7.4. `objects` BEFORE UPDATE
 
 - `created_by`, `created_at` неизменяемы; `updated_at := now()`.
+
+### 7.5. `tasks` AFTER UPDATE OF title, description, assignee_id, deleted_at
+
+- Триггер (security definer) пишет в `task_field_history` по одной строке на каждое реально
+  изменённое поле (`is distinct from`), в порядке `title`, `description`, `assignee_id`,
+  `deleted_at`. `changed_by = auth.uid()` (null для service_role), `changed_at = now()` —
+  строки одного оператора делят время и идут по возрастанию `id`.
+- Пустой UPDATE (те же значения) ничего не пишет. Создание задачи и `change_task_status` в эту
+  таблицу не пишут (у них своя история).
 
 ---
 
@@ -365,10 +450,12 @@ RPC выставляет флаг через `set_config('app.status_change', 'r
 | `/objects/:objectId` | оба | Карточка объекта со списком задач |
 | `/tasks/:taskId` | оба | Карточка задачи |
 | `/my-tasks` | executor | Мои задачи |
+| `/trash` | manager | Корзина |
 | `*` | — | «Страница не найдена» |
 
 Неавторизованный → `/login` (с возвратом на исходный путь после входа). Авторизованный на
-`/login` → `/`. Manager на `/my-tasks` → редирект на `/objects`. Если объект/задача не
+`/login` → `/`. Manager на `/my-tasks` → редирект на `/objects`. Executor на `/trash` → редирект
+на `/my-tasks`. Если объект/задача не
 найдены (RLS вернул пусто) — «Не найдено или нет доступа».
 
 ### 8.3. Экраны
@@ -379,19 +466,29 @@ RPC выставляет флаг через `set_config('app.status_change', 'r
    карточка. Manager: кнопка «Создать объект» (модалка: название, адрес). Executor видит только
    объекты со своими задачами; пустое состояние — «У вас пока нет объектов».
 3. **Карточка объекта.** Название, адрес. Manager: «Редактировать» (модалка), «Удалить» —
-   подтверждение с текстом «Будет удалено задач: N. Действие необратимо» (N — число задач
-   объекта). Список задач: название, исполнитель, статус (цветной бейдж), дата создания;
-   клик → карточка задачи. Manager: «Создать задачу» (модалка: название, описание, исполнитель —
+   подтверждение «Удалить объект?» с текстом «Объект будет перемещён в корзину вместе с задачами:
+   N. Восстановить его можно из корзины.» (N — число задач объекта). Список задач: название,
+   исполнитель, статус (цветной бейдж), дата создания; клик → карточка задачи. Manager: «Создать задачу» (модалка: название, описание, исполнитель —
    select из профилей с ролью executor; объект = текущий). Executor видит только свои задачи.
 4. **Карточка задачи.** Поля: название, описание, объект (ссылка), исполнитель, статус, автор,
    дата создания. Блок действий (см. 8.4). Manager: «Редактировать»
-   (название, описание, исполнитель, объект) — только если статус ≠ `accepted`; «Удалить»
-   (подтверждение) — в любом статусе (см. 12.2, 12.3). История: список по
-   `changed_at` по возрастанию — дата/время, кто (имя), «из → в» (для создания «Создана»),
-   комментарий.
+   (название, описание, исполнитель; поля «Объект» нет — объект задачи не меняется) — в любом
+   статусе, включая «Принята»; «Удалить» — в любом статусе, подтверждение «Удалить задачу?» с
+   текстом «Задача будет перемещена в корзину. Восстановить её можно из корзины.» (см. 12).
+   История — единый список по `changed_at` по возрастанию (при равенстве времени сначала смены
+   статуса, затем правки полей, затем по `id`): дата/время, кто (имя; для системных правок
+   «Система»), изменение, комментарий. Смена статуса: «из → в» (для создания «Создана»).
+   Правка поля: «Изменено поле «Название»: «старое» → «новое»», для исполнителя — имена, для
+   описания — «Изменено поле «Описание»» и раскрывающийся блок «Было / Стало». Отправка в корзину
+   и восстановление: «Задача перемещена в корзину» / «Задача восстановлена из корзины».
 5. **Мои задачи (executor).** Все задачи, где `assignee_id = текущий`: название, объект,
    статус, дата. Фильтр по статусу (SegmentedControl/Select, «Все» по умолчанию). Сортировка:
    `rework`, `new`, `in_progress`, `on_review`, `accepted`, затем по `created_at` desc.
+6. **Корзина (manager, `/trash`).** Раздел «Удалённые объекты» (название, адрес, когда и кто
+   удалил, кнопка «Восстановить») и раздел «Удалённые задачи» (название, объект, когда и кто
+   удалил, «Восстановить»; если объект тоже в корзине — пометка «объект в корзине» и кнопка
+   недоступна, сначала восстанавливается объект). Пустые состояния: «Нет удалённых объектов»,
+   «Нет удалённых задач». Ссылка «Корзина» в шапке только у постановщика.
 
 ### 8.4. Доступные действия
 
@@ -420,7 +517,9 @@ RPC выставляет флаг через `set_config('app.status_change', 'r
 демо-пользователями), `SUPABASE_SERVICE_ROLE_KEY`, `SEED_PASSWORD` (общий пароль демо-юзеров).
 Не-локальный URL — только с `--yes`.
 Идемпотентен: если юзер с email существует — переиспользует; объекты/задачи пересоздаёт только
-с флагом `--reset` (удаляет объекты демо, задачи уходят каскадом).
+с флагом `--reset` (физически удаляет объекты демо клиентом `service_role`, задачи и их история
+уходят каскадом; найденные мягко удалённые демо-объекты тоже пересоздаются). Поиск существующих
+демо-объектов и чтение задач для сводки идут через `service_role`: RLS скрывает удалённое.
 
 Порядок:
 1. Admin API (`auth.admin.createUser`, `email_confirm: true`, `app_metadata.role`,
@@ -436,7 +535,9 @@ RPC выставляет флаг через `set_config('app.status_change', 'r
    Задачи распределены между обоими исполнителями и всеми объектами; один объект содержит
    задачи обоих исполнителей (для демонстрации, что исполнитель видит только свои).
 
-Service role используется только для шага 1. Seed не обходит бизнес-правила.
+Service role используется для шага 1, поиска существующих демо-данных и физического удаления при
+`--reset`. Создание объектов, задач и смена статусов идут под пользователями: seed не обходит
+бизнес-правила.
 
 ---
 
@@ -473,8 +574,28 @@ Service role используется только для шага 1. Seed не 
   создаётся `new` или запрос отклонён; UPDATE status → ошибка).
 - создание задачи пишет историю `null → new` с `changed_by = manager`.
 - assignee с ролью manager → `ASSIGNEE_NOT_EXECUTOR`.
-- UPDATE/DELETE задачи в `accepted` → `TASK_ACCEPTED_READONLY` (UPDATE); DELETE разрешён.
-- после переназначения старый исполнитель теряет доступ, новый получает.
+- принятая задача редактируется (название, описание, исполнитель), статус остаётся `accepted`;
+  DELETE из API → 42501.
+- после переназначения старый исполнитель теряет доступ, новый получает; переназначение пишет
+  строку `assignee_id` в `task_field_history`, а `task_status_history` не меняется.
+- `object_id` задачи неизменяем: PATCH → 42501, service_role → `IMMUTABLE_FIELD`.
+
+**Мягкое удаление и корзина**
+- DELETE из `objects`/`tasks`/обеих таблиц истории для обеих ролей → 42501.
+- `soft_delete_task` / `soft_delete_object`: задача/объект, задачи объекта и их история (статусов и
+  полей) не видны никому через таблицы; executor теряет объект, где его единственная задача
+  удалена; администратор (service_role) их видит.
+- `change_task_status` по удалённой задаче или задаче удалённого объекта → `TASK_NOT_FOUND`; PATCH
+  менеджера → 0 строк; service_role UPDATE → `TASK_DELETED`; INSERT задачи в удалённый объект →
+  `OBJECT_DELETED`.
+- Повторное удаление и восстановление активного → `*_NOT_FOUND`; executor → `NOT_ALLOWED`; anon →
+  ошибка.
+- `list_deleted_objects` / `list_deleted_tasks`: точные колонки, исключают активные записи и задачи,
+  скрытые лишь через объект; executor → `[]`.
+- `restore_task`: задача и её история снова видны, правки и переходы работают; пока объект в
+  корзине → `OBJECT_DELETED`. `restore_object`: возвращает объект и не удалённые отдельно задачи;
+  отдельно удалённая задача остаётся в корзине.
+- service_role: физическое удаление объекта каскадом удаляет задачи и обе таблицы истории.
 
 **Переходы (RPC)**
 - каждый разрешённый переход из 5.7 проходит у правильного актора и пишет историю.
@@ -486,9 +607,14 @@ Service role используется только для шага 1. Seed не 
 - прямой UPDATE status через service_role → `STATUS_CHANGE_FORBIDDEN`.
 
 **История**
-- `authenticated` (обе роли) не может INSERT/UPDATE/DELETE `task_status_history`.
-- service_role UPDATE истории → ошибка триггера.
-- удаление задачи каскадно удаляет её историю; удаление объекта — задачи и историю.
+- `authenticated` (обе роли) не может INSERT/UPDATE/DELETE `task_status_history` и
+  `task_field_history`; anon не читает `task_field_history`.
+- service_role UPDATE любой из таблиц истории → `IMMUTABLE_FIELD`.
+- физическое удаление задачи/объекта (service_role) каскадно удаляет историю.
+- `task_field_history`: правка названия, описания, исполнителя пишет ровно одну строку на поле
+  (`changed_by` = автор правки, у service_role — null); один PATCH трёх полей — три строки с одним
+  `changed_at` в порядке `id`; PATCH теми же значениями, создание задачи и `change_task_status` —
+  0 строк. Видимость такая же, как у истории статусов.
 
 ### 10.2. Тесты фронта (`npm test`)
 
@@ -529,18 +655,23 @@ Supabase), `npm run build`.
 
 1. Смена статуса — только RPC `change_task_status`; прямой UPDATE статуса блокируется grants
    и триггером (защита в два слоя, работает даже против service_role).
-2. Постановщик редактирует задачу (название, описание, исполнитель, объект) в любом статусе,
-   кроме «Принята». Принятая задача неизменяема, но может быть удалена.
-3. Удаление задачи — в любом статусе; история удаляется вместе с задачей (это не изменение
-   истории, а удаление сущности целиком). Через API историю удалить/изменить нельзя.
-4. Удаление объекта — каскадом вместе с задачами и их историей, с подтверждением в UI
-   «будет удалено N задач».
+2. Постановщик редактирует задачу (название, описание, исполнитель) в любом статусе, включая
+   «Принята». Объект задачи после создания не меняется. Каждая правка фиксируется базой в
+   `task_field_history` (аудит), чтобы не было споров между людьми.
+3. «Удаление» задачи — мягкое: задача уходит в корзину (`deleted_at`), никому не видна, постановщик
+   восстанавливает её из корзины. История сохраняется; отправка в корзину и восстановление пишутся
+   в неё как `field = 'deleted_at'`. Физически удаляет только администратор (`service_role`).
+4. «Удаление» объекта — мягкое: в корзину уходит строка объекта, его задачи скрыты и возвращаются
+   при восстановлении объекта; задачи, удалённые отдельно, остаются в корзине. Задачу нельзя
+   восстановить, пока её объект в корзине (`OBJECT_DELETED`). Корзина доступна только
+   постановщику (RPC списков, `/trash`).
 5. Исполнитель обязателен при создании задачи и должен иметь роль «Исполнитель».
-6. Переназначение исполнителя не меняет статус и не пишется в историю (история — только
-   статусы, как в ТЗ). Новый исполнитель продолжает с текущего статуса; старый теряет доступ.
+6. Переназначение исполнителя не меняет статус, но записывается в историю правок полей. Новый
+   исполнитель продолжает с текущего статуса; старый теряет доступ (и к истории задачи).
 7. Все постановщики равноправны (видят и меняют задачи друг друга).
 8. Постановщик не может выполнять переходы исполнителя (например, сам взять задачу в работу).
-9. «Принята» — финальный статус, повторного открытия нет.
+9. «Принята» — финальный статус, повторного открытия нет; поля принятой задачи редактируются
+   (с записью в историю).
 10. Комментарий можно передать к любому переходу (API), в UI поле есть только у «Вернуть на
     доработку», где оно обязательно.
 11. Роль хранится в `app_metadata` (изменяема только сервером) и копируется в `profiles` при
@@ -550,8 +681,9 @@ Supabase), `npm run build`.
 13. Попытка выполнить действие над невидимой задачей возвращает «не найдена», а не «нет прав»,
     чтобы не раскрывать существование чужих задач.
 14. Не делали (вне объёма 2–3 ч): пагинация и поиск, realtime-обновления, загрузка файлов/фото,
-    аудит изменения полей задачи, сроки/приоритеты, управление пользователями из UI,
-    восстановление пароля.
+    сроки/приоритеты, управление пользователями из UI, восстановление пароля, очистка корзины из
+    интерфейса, сохранение автора удаления объекта после его восстановления (и запись удаления
+    объекта в историю его задач).
 
 ---
 
@@ -570,3 +702,4 @@ Backend и frontend lane-ы параллельны везде, где не ук�
 | 5 | Карточка задачи, действия, история, «Мои задачи» (8.3 п.4–5, 8.4) | frontend | весь цикл статусов проходится в UI обеими ролями |
 | 6 | README (запуск локально, тесты, деплой, демо-доступы), `docs/decisions.md`, `docs/for-manager.md` (полстраницы, без терминов: как устроено, как защищены данные, чего не может исполнитель) | docs, без ревьюера | — |
 | 7 | Деплой: облачный проект, `db push`, seed, Vercel; ручная проверка в обход UI (curl с токеном исполнителя) | вручную пользователем | приложение доступно по ссылке |
+| 8 | Мягкое удаление и корзина (миграции `soft_delete`, `task_field_history`; `/trash`), неизменяемый `object_id` задачи, редактирование принятых задач, история правок полей; обновление seed и документов | backend + frontend (параллельно по контракту 5.9–5.10) | `test:db` и `npm test` зелёные; корзина и смешанная история работают в UI |

@@ -67,6 +67,7 @@ const TASK: TaskDetails = {
 
 const HISTORY: TaskHistoryEntry[] = [
   {
+    kind: 'status',
     id: 1,
     from_status: null,
     to_status: 'new',
@@ -75,6 +76,7 @@ const HISTORY: TaskHistoryEntry[] = [
     actor: { full_name: 'Иван Петров' },
   },
   {
+    kind: 'status',
     id: 2,
     from_status: 'new',
     to_status: 'in_progress',
@@ -83,6 +85,7 @@ const HISTORY: TaskHistoryEntry[] = [
     actor: { full_name: 'Сергей Кузнецов' },
   },
   {
+    kind: 'status',
     id: 3,
     from_status: 'in_progress',
     to_status: 'on_review',
@@ -91,6 +94,7 @@ const HISTORY: TaskHistoryEntry[] = [
     actor: { full_name: 'Сергей Кузнецов' },
   },
   {
+    kind: 'status',
     id: 4,
     from_status: 'on_review',
     to_status: 'rework',
@@ -222,19 +226,15 @@ async function openReworkDialog(user: UserEvent): Promise<HTMLElement> {
   return screen.findByRole('dialog', { name: REWORK_DIALOG });
 }
 
-// Тестовый хелпер: менеджер открывает модалку редактирования и ждёт загрузки опций.
-async function openEditDialog(user: UserEvent): Promise<HTMLElement> {
-  await renderLoaded(MANAGER, 'new');
+// Тестовый хелпер: менеджер открывает модалку редактирования и ждёт загрузки исполнителей.
+async function openEditDialog(user: UserEvent, status: Status = 'new'): Promise<HTMLElement> {
+  await renderLoaded(MANAGER, status);
   await user.click(screen.getByRole('button', { name: 'Редактировать' }));
 
   const dialog = await screen.findByRole('dialog', { name: EDIT_DIALOG });
 
   await waitFor(() => {
     expect(within(dialog).getByLabelText('Исполнитель')).toHaveValue('Сергей Кузнецов');
-  });
-
-  await waitFor(() => {
-    expect(within(dialog).getByLabelText('Объект')).toHaveValue('Дом на Ленина');
   });
 
   return dialog;
@@ -560,6 +560,27 @@ describe('§8.4 «Последний комментарий доработки (
     expect(alert.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('rework comment = last entry with kind «status» and to_status rework: later field entries do not hide it', async () => {
+    vi.mocked(fetchTaskHistory).mockResolvedValue([
+      ...HISTORY,
+      {
+        kind: 'field',
+        id: 9,
+        field: 'title',
+        old_value: 'Фундамент',
+        new_value: 'Залить фундамент',
+        changed_at: '2026-03-19T09:00:00Z',
+        actor: { full_name: 'Иван Петров' },
+      },
+    ]);
+
+    await renderLoaded(EXECUTOR, 'rework');
+
+    const alert = await screen.findByRole('alert');
+
+    expect(within(alert).getByText('Нет арматуры')).toBeInTheDocument();
+  });
+
   it('manager on rework with the same history sees no alert', async () => {
     await renderLoaded(MANAGER, 'rework');
     await screen.findByText('Нет арматуры');
@@ -614,8 +635,8 @@ describe('§8.3 п.4 «История: список по changed_at по воз�
   });
 });
 
-describe('§8.3 п.4 / §12.2 / §12.3 manager «Редактировать» (статус ≠ accepted) и «Удалить» (любой статус)', () => {
-  it.each(['new', 'on_review', 'rework'] as const)(
+describe('step 8 §4.4 «Manager sees «Редактировать» and «Удалить» in EVERY status incl. accepted»', () => {
+  it.each(['new', 'in_progress', 'on_review', 'accepted', 'rework'] as const)(
     'manager on %s sees «Редактировать» and «Удалить»',
     async (status) => {
       await renderLoaded(MANAGER, status);
@@ -625,13 +646,6 @@ describe('§8.3 п.4 / §12.2 / §12.3 manager «Редактировать» (�
     },
   );
 
-  it('manager on accepted sees «Удалить» but not «Редактировать»', async () => {
-    await renderLoaded(MANAGER, 'accepted');
-
-    expect(screen.getByRole('button', { name: 'Удалить' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Редактировать' })).not.toBeInTheDocument();
-  });
-
   it.each(['new', 'accepted'] as const)('executor on %s sees neither', async (status) => {
     await renderLoaded(EXECUTOR, status);
 
@@ -640,26 +654,30 @@ describe('§8.3 п.4 / §12.2 / §12.3 manager «Редактировать» (�
   });
 });
 
-describe('§8.3 п.4 «Редактировать» (название, описание, исполнитель, объект)', () => {
-  it('opens «Редактировать задачу» prefilled from the task; executors and objects are loaded', async () => {
+describe('step 8 §4.4 «Task edit modal»: fields «Название», «Описание», «Исполнитель»; NO «Объект»', () => {
+  it('opens «Редактировать задачу» prefilled from the task; executors loaded; no «Объект» field; fetchObjects not called', async () => {
     const user = userEvent.setup();
     const dialog = await openEditDialog(user);
 
     expect(within(dialog).getByLabelText('Название')).toHaveValue('Залить фундамент');
     expect(within(dialog).getByLabelText('Описание')).toHaveValue('Бетон М300');
+    expect(within(dialog).queryByLabelText('Объект')).not.toBeInTheDocument();
     expect(fetchExecutors).toHaveBeenCalled();
-    expect(fetchObjects).toHaveBeenCalled();
+    expect(fetchObjects).not.toHaveBeenCalled();
   });
 
-  it('«Сохранить» sends updateTask("task-1", trimmed values with new object), closes the dialog and refetches the task', async () => {
+  it('«Сохранить» sends updateTask("task-1", { title: trimmed, description: trimmed, assignee_id }) without object_id, closes the dialog and refetches the task', async () => {
     const user = userEvent.setup();
     const dialog = await openEditDialog(user);
     const callsBefore = vi.mocked(fetchTask).mock.calls.length;
     const titleInput = within(dialog).getByLabelText('Название');
+    const descriptionInput = within(dialog).getByLabelText('Описание');
 
     await user.clear(titleInput);
     await user.type(titleInput, '  Новое название  ');
-    await pickOption(user, dialog, 'Объект', 'Склад');
+    await user.clear(descriptionInput);
+    await user.type(descriptionInput, '  Бетон М400  ');
+    await pickOption(user, dialog, 'Исполнитель', 'Алексей Морозов');
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
 
     await waitFor(() => {
@@ -667,11 +685,14 @@ describe('§8.3 п.4 «Редактировать» (название, опис�
     });
 
     expect(updateTask).toHaveBeenCalledWith('task-1', {
-      object_id: 'obj-2',
       title: 'Новое название',
-      description: 'Бетон М300',
-      assignee_id: 'exec-1',
+      description: 'Бетон М400',
+      assignee_id: 'exec-2',
     });
+
+    const payload = vi.mocked(updateTask).mock.calls[0]?.[1];
+
+    expect(Object.keys(payload ?? {}).sort()).toEqual(['assignee_id', 'description', 'title']);
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: EDIT_DIALOG })).not.toBeInTheDocument();
@@ -679,6 +700,24 @@ describe('§8.3 п.4 «Редактировать» (название, опис�
 
     await waitFor(() => {
       expect(vi.mocked(fetchTask).mock.calls.length).toBeGreaterThan(callsBefore);
+    });
+  });
+
+  it('AC6: accepted task can be edited by the manager → updateTask("task-1", …)', async () => {
+    const user = userEvent.setup();
+    const dialog = await openEditDialog(user, 'accepted');
+    const titleInput = within(dialog).getByLabelText('Название');
+
+    await user.clear(titleInput);
+    await user.type(titleInput, 'Принятая, правка');
+    await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
+
+    await waitFor(() => {
+      expect(updateTask).toHaveBeenCalledWith('task-1', {
+        title: 'Принятая, правка',
+        description: 'Бетон М300',
+        assignee_id: 'exec-1',
+      });
     });
   });
 
@@ -707,19 +746,19 @@ describe('§8.3 п.4 «Редактировать» (название, опис�
     expect(screen.getByRole('dialog', { name: EDIT_DIALOG })).toBeInTheDocument();
   });
 
-  it('rejects TASK_ACCEPTED_READONLY → «Принятую задачу нельзя изменить»', async () => {
-    vi.mocked(updateTask).mockRejectedValue(new Error('TASK_ACCEPTED_READONLY'));
+  it('rejects TASK_DELETED → «Задача находится в корзине»', async () => {
+    vi.mocked(updateTask).mockRejectedValue(new Error('TASK_DELETED'));
 
     const user = userEvent.setup();
     const dialog = await openEditDialog(user);
 
     await user.click(within(dialog).getByRole('button', { name: 'Сохранить' }));
 
-    expect(await screen.findByText('Принятую задачу нельзя изменить')).toBeInTheDocument();
+    expect(await screen.findByText('Задача находится в корзине')).toBeInTheDocument();
   });
 });
 
-describe('§8.3 п.4 «Удалить» (подтверждение «Удалить задачу?» / «Действие необратимо»)', () => {
+describe('step 8 §4.4 «Удалить» (подтверждение «Удалить задачу?» / «Задача будет перемещена в корзину…»)', () => {
   it('«Отмена» sends nothing; confirming calls deleteTask("task-1") and opens the object card', async () => {
     const user = userEvent.setup();
 
@@ -728,7 +767,10 @@ describe('§8.3 п.4 «Удалить» (подтверждение «Удали
 
     let dialog = await screen.findByRole('dialog', { name: DELETE_DIALOG });
 
-    expect(within(dialog).getByText('Действие необратимо')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText('Задача будет перемещена в корзину. Восстановить её можно из корзины.'),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Действие необратимо/)).not.toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
 

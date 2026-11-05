@@ -310,14 +310,17 @@ describe('§8.3 п.3 «Редактировать» (модалка)', () => {
   });
 });
 
-describe('§8.3 п.3 «Удалить» — подтверждение «Будет удалено задач: N. Действие необратимо»', () => {
+describe('step 8 §4.4 «Удалить» — подтверждение «Объект будет перемещён в корзину вместе с задачами: N…»', () => {
   it('confirmation shows N = task_count; «Отмена» sends nothing; confirming deletes and goes to /objects', async () => {
     const user = userEvent.setup();
     let dialog = await openDialog(user, 'Удалить', DELETE_DIALOG);
 
     expect(
-      within(dialog).getByText('Будет удалено задач: 3. Действие необратимо'),
+      within(dialog).getByText(
+        'Объект будет перемещён в корзину вместе с задачами: 3. Восстановить его можно из корзины.',
+      ),
     ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Действие необратимо/)).not.toBeInTheDocument();
 
     await user.click(within(dialog).getByRole('button', { name: 'Отмена' }));
 
@@ -338,14 +341,16 @@ describe('§8.3 п.3 «Удалить» — подтверждение «Буд�
     expect(await screen.findByText(OBJECTS_LIST_PROBE)).toBeInTheDocument();
   });
 
-  it('object without tasks → «Будет удалено задач: 0. Действие необратимо»', async () => {
+  it('object without tasks → «…вместе с задачами: 0. Восстановить его можно из корзины.»', async () => {
     vi.mocked(fetchObject).mockResolvedValue({ ...OBJECT, task_count: 0 });
 
     const user = userEvent.setup();
     const dialog = await openDialog(user, 'Удалить', DELETE_DIALOG);
 
     expect(
-      within(dialog).getByText('Будет удалено задач: 0. Действие необратимо'),
+      within(dialog).getByText(
+        'Объект будет перемещён в корзину вместе с задачами: 0. Восстановить его можно из корзины.',
+      ),
     ).toBeInTheDocument();
   });
 

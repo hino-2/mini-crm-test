@@ -1,8 +1,8 @@
 # Мини-CRM «Объекты и задачи»
 
 Небольшая CRM для строительной компании. Постановщик ведёт объекты (стройки) и ставит по ним
-задачи, исполнитель берёт задачу в работу и отправляет её на проверку. Каждая смена статуса
-попадает в историю.
+задачи, исполнитель берёт задачу в работу и отправляет её на проверку. Каждая смена статуса и
+каждая правка задачи попадают в историю; удаление идёт через корзину с восстановлением.
 
 - Стек: React 18, TypeScript, Mantine, TanStack Query, react-router и Supabase (Postgres, Auth,
   PostgREST).
@@ -66,7 +66,8 @@ npm run dev                                   # http://localhost:5173
 
 Про seed:
 - Повторный запуск безопасен: пользователей он чинит (пароль, роль, имя), данные не дублирует.
-- `--reset` пересоздаёт демо-объекты и задачи.
+- `--reset` пересоздаёт демо-объекты и задачи: физически удаляет их ключом `service_role`
+  (в том числе уже лежащие в корзине), задачи и история уходят каскадом.
 - Если файла из `--env-file` нет, Node падает раньше скрипта (exit 9). Проверьте путь.
 
 Ключ `service_role` нужен только seed-скрипту. Никогда не кладите его в переменные `VITE_*`:
@@ -92,7 +93,7 @@ npm run build
 ## Структура
 
 ```
-supabase/migrations/   схема, хелперы доступа, RLS-политики, триггеры, RPC change_task_status
+supabase/migrations/   схема, хелперы доступа, RLS-политики, триггеры, RPC (смена статуса, корзина), история правок
 supabase/config.toml   локальный стек; регистрация выключена
 scripts/seed/          seed-скрипт (Admin API для пользователей, остальное — через RPC под ролями)
 tests/db/              тесты базы против локального Supabase
@@ -132,6 +133,9 @@ TOKEN=$(curl -s "$URL/auth/v1/token?grant_type=password" -H "apikey: $KEY" \
 # видны только свои задачи
 curl -s "$URL/rest/v1/tasks?select=title,status" -H "apikey: $KEY" -H "Authorization: Bearer $TOKEN"
 
+# физическое удаление запрещено (42501); поддерживаемое удаление: RPC soft_delete_task (постановщик)
+curl -s -X DELETE "$URL/rest/v1/tasks?id=eq.<id>" -H "apikey: $KEY" -H "Authorization: Bearer $TOKEN"
+
 # прямая запись статуса запрещена (42501)
 curl -s -X PATCH "$URL/rest/v1/tasks?id=eq.<id>" -H "apikey: $KEY" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{"status":"accepted"}'
@@ -141,6 +145,15 @@ curl -s -X POST "$URL/rest/v1/rpc/change_task_status" -H "apikey: $KEY" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"p_task_id":"<id>","p_to_status":"accepted"}'
 
-# историю изменить нельзя
+# историю изменить нельзя (42501)
 curl -s -X DELETE "$URL/rest/v1/task_status_history?id=gt.0" -H "apikey: $KEY" -H "Authorization: Bearer $TOKEN"
+curl -s -X DELETE "$URL/rest/v1/task_field_history?id=gt.0" -H "apikey: $KEY" -H "Authorization: Bearer $TOKEN"
+
+# исполнитель не может удалять в корзину: NOT_ALLOWED
+curl -s -X POST "$URL/rest/v1/rpc/soft_delete_task" -H "apikey: $KEY" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"p_task_id":"<id>"}'
 ```
+
+То же с токеном постановщика: `POST /rest/v1/rpc/soft_delete_task` отправляет задачу в корзину
+(поддерживаемый способ удаления), а `DELETE /rest/v1/tasks` по-прежнему даёт 42501.

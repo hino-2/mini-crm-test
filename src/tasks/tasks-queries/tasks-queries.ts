@@ -6,6 +6,7 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import {
+  DELETED_TASKS_QUERY_KEY,
   MY_TASKS_QUERY_KEY,
   OBJECTS_QUERY_KEY,
   OBJECT_QUERY_KEY,
@@ -107,6 +108,7 @@ export function useUpdateTask(taskId: string): UseMutationResult<void, Error, Ta
     onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: [TASK_QUERY_KEY, taskId] }),
+        queryClient.invalidateQueries({ queryKey: [TASK_HISTORY_QUERY_KEY, taskId] }),
         queryClient.invalidateQueries({ queryKey: [OBJECT_TASKS_QUERY_KEY] }),
         queryClient.invalidateQueries({ queryKey: [OBJECT_QUERY_KEY] }),
         queryClient.invalidateQueries({ queryKey: [OBJECTS_QUERY_KEY] }),
@@ -132,6 +134,7 @@ export function useDeleteTask(taskId: string): UseMutationResult<void, Error, vo
         queryClient.invalidateQueries({ queryKey: [OBJECT_QUERY_KEY], refetchType }),
         queryClient.invalidateQueries({ queryKey: [OBJECTS_QUERY_KEY], refetchType }),
         queryClient.invalidateQueries({ queryKey: [MY_TASKS_QUERY_KEY], refetchType }),
+        queryClient.invalidateQueries({ queryKey: [DELETED_TASKS_QUERY_KEY], refetchType }),
       ]);
     },
     onError: notifyError,

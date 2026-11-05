@@ -26,7 +26,7 @@ export function TaskCardPage(): JSX.Element {
   const confirmDelete = (objectId: string): string =>
     modals.openConfirmModal({
       title: 'Удалить задачу?',
-      children: <Text>Действие необратимо</Text>,
+      children: <Text>Задача будет перемещена в корзину. Восстановить её можно из корзины.</Text>,
       labels: { confirm: 'Удалить', cancel: 'Отмена' },
       confirmProps: { color: 'red' },
       onConfirm: () =>
@@ -45,7 +45,7 @@ export function TaskCardPage(): JSX.Element {
           <Title order={3}>{task.title}</Title>
           {isManager && (
             <Group my="md">
-              {task.status !== 'accepted' && <Button onClick={open}>Редактировать</Button>}
+              <Button onClick={open}>Редактировать</Button>
               <Button
                 color="red"
                 loading={del.isPending}
@@ -98,9 +98,7 @@ export function TaskCardPage(): JSX.Element {
           </Table>
           <TaskStatusActions task={task} />
           <TaskHistorySection taskId={task.id} />
-          {isManager && task.status !== 'accepted' && (
-            <TaskEditModal task={task} opened={opened} onClose={close} />
-          )}
+          {isManager && <TaskEditModal task={task} opened={opened} onClose={close} />}
         </>
       )}
     </>

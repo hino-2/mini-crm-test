@@ -1,4 +1,4 @@
-import type { TaskStatus } from './tasks.type';
+import type { TaskField, TaskStatus } from './tasks.type';
 
 export const TASK_STATUS_LABELS: Readonly<Record<TaskStatus, string>> = {
   new: 'Новая',
@@ -26,7 +26,6 @@ export const OBJECT_TASKS_SELECT =
   'id, title, status, created_at, assignee:profiles!tasks_assignee_id_fkey(full_name)';
 
 export const TASK_COMMENT_MAX_LENGTH = 2000;
-export const TASK_OBJECT_REQUIRED_MESSAGE = 'Выберите объект';
 export const TASK_CREATED_HISTORY_LABEL = 'Создана';
 
 export const TASK_DETAILS_SELECT =
@@ -35,3 +34,16 @@ export const TASK_HISTORY_SELECT =
   'id, from_status, to_status, changed_at, comment, actor:profiles!task_status_history_changed_by_fkey(full_name)';
 export const MY_TASKS_SELECT =
   'id, title, status, created_at, object:objects!tasks_object_id_fkey(name)';
+
+export const TASK_FIELD_HISTORY_SELECT =
+  'id, field, old_value, new_value, changed_at, actor:profiles!task_field_history_changed_by_fkey(full_name)';
+
+export const TASK_FIELD_LABELS: Readonly<Record<Exclude<TaskField, 'deleted_at'>, string>> = {
+  title: 'Название',
+  description: 'Описание',
+  assignee_id: 'Исполнитель',
+};
+
+export const TASK_HISTORY_DELETED_LABEL = 'Задача перемещена в корзину';
+export const TASK_HISTORY_RESTORED_LABEL = 'Задача восстановлена из корзины';
+export const TASK_HISTORY_EMPTY_VALUE = '(пусто)';

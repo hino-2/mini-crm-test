@@ -288,10 +288,10 @@ describe('§7.2 / §10.1 Transitions: direct status UPDATE by service_role', () 
     expect((await readTask(admin, newTask.id)).status).toBe('new');
   });
 
-  it('§7.2: any UPDATE of an accepted task → TASK_ACCEPTED_READONLY', async () => {
+  it('§3.1: direct status UPDATE of an accepted task → STATUS_CHANGE_FORBIDDEN', async () => {
     const { error } = await admin.from('tasks').update({ status: 'new' }).eq('id', acceptedTask.id);
 
-    expect(error?.message).toBe('TASK_ACCEPTED_READONLY');
+    expect(error?.message).toBe('STATUS_CHANGE_FORBIDDEN');
     expect((await readTask(admin, acceptedTask.id)).status).toBe('accepted');
   });
 });

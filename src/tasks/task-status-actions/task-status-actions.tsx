@@ -18,6 +18,12 @@ export function TaskStatusActions({ task }: TaskStatusActionsProps): JSX.Element
         null)
       : null;
 
+  // The modal state outlives the action (this component stays mounted): drop it as soon as the
+  // rework action disappears, otherwise the modal pops up again when the action comes back.
+  if (opened && !actions.some((action) => action.requiresComment)) {
+    close();
+  }
+
   if (actions.length === 0) {
     return null;
   }
